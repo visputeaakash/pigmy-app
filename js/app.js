@@ -8,6 +8,7 @@ let allAccounts = [];
 let allFeeds = [];
 let unsubscribeAccounts = null;
 let unsubscribeFeeds = null;
+let renderLimit = 50;
 
 // DOM Ready
 document.addEventListener("DOMContentLoaded", async () => {
@@ -23,6 +24,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.getElementById('feed-date-input').value = today;
   document.getElementById('cutoff-date-input').value = today;
   document.getElementById('acc-date-input').value = today;
+
+  // Network Listeners
+  const updateNetworkBadge = () => {
+    const badge = document.getElementById('network-badge');
+    if (navigator.onLine) {
+      badge.classList.add('hidden');
+    } else {
+      badge.classList.remove('hidden');
+    }
+  };
+  window.addEventListener('online', updateNetworkBadge);
+  window.addEventListener('offline', updateNetworkBadge);
+  updateNetworkBadge();
 
   // Initialize Firebase DB
   await initDB();
@@ -154,7 +168,11 @@ async function renderPortfolios() {
         <td class="text-accent fw-bold">${fmtMoney(acc.total_balance)}<br>${slips}</td>
         <td>${statusBadge}</td>
         <td>
-          <button class="btn btn-sm btn-danger" onclick="confirmDeleteAccount('${acc.id}')">Del</button>
+          <div class="btn-group" style="flex-wrap:nowrap;">
+            <button class="btn btn-sm btn-ghost" onclick="openAccountDetails('${acc.id}')" title="View Details">👁️</button>
+            ${acc.status === 'Active' ? `<button class="btn btn-sm btn-warning" onclick="openCloseAccount('${acc.id}')" title="Mature Account">Close</button>` : ''}
+            <button class="btn btn-sm btn-danger" onclick="confirmDeleteAccount('${acc.id}')" title="Delete">Del</button>
+          </div>
         </td>
       </tr>
     `;
@@ -163,15 +181,29 @@ async function renderPortfolios() {
 
 function renderAuditTrail() {
   const filterAcc = document.getElementById('audit-filter').value;
+  const searchQ = (document.getElementById('audit-search').value || '').toLowerCase();
   const tbody = document.querySelector('#table-audit tbody');
   
-  const filteredFeeds = filterAcc 
-    ? allFeeds.filter(f => f.account_number === filterAcc)
-    : allFeeds;
+  let filteredFeeds = allFeeds;
+  if (filterAcc) filteredFeeds = filteredFeeds.filter(f => f.account_number === filterAcc);
+  if (searchQ) {
+    filteredFeeds = filteredFeeds.filter(f => 
+      (f.receipt_or_slip_no || '').toLowerCase().includes(searchQ) ||
+      (f.notes || '').toLowerCase().includes(searchQ)
+    );
+  }
 
   if (filteredFeeds.length === 0) {
     tbody.innerHTML = `<tr><td colspan="5" class="text-center text-dim">No entries found.</td></tr>`;
+    document.getElementById('btn-load-more').classList.add('hidden');
     return;
+  }
+  
+  const toRender = filteredFeeds.slice(0, renderLimit);
+  if (toRender.length < filteredFeeds.length) {
+    document.getElementById('btn-load-more').classList.remove('hidden');
+  } else {
+    document.getElementById('btn-load-more').classList.add('hidden');
   }
 
   // Helper to get bank name
@@ -186,9 +218,13 @@ function renderAuditTrail() {
       : `<span class="badge badge-pending">⚠️</span>`;
       
     const actionBtns = f.passbook_verified
-      ? `<button class="btn btn-sm btn-danger" onclick="confirmDeleteFeed('${f.id}')">🗑️</button>`
+      ? `<div class="btn-group">
+           <button class="btn btn-sm btn-ghost" onclick="openEditFeed('${f.id}')">✏️</button>
+           <button class="btn btn-sm btn-danger" onclick="confirmDeleteFeed('${f.id}')">🗑️</button>
+         </div>`
       : `<div class="btn-group">
            <button class="btn btn-sm btn-warning" onclick="handleVerifyFeed('${f.id}')">Stamp</button>
+           <button class="btn btn-sm btn-ghost" onclick="openEditFeed('${f.id}')">✏️</button>
            <button class="btn btn-sm btn-danger" onclick="confirmDeleteFeed('${f.id}')">🗑️</button>
          </div>`;
 
@@ -227,6 +263,51 @@ function setupForms() {
     } finally {
       btn.disabled = false;
       btn.innerText = 'Login Securely';
+    }
+  });
+
+  // Edit Feed
+  document.getElementById('form-edit-feed').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-edit');
+    btn.disabled = true;
+    try {
+      const id = document.getElementById('edit-feed-id').value;
+      const dep = parseFloat(document.getElementById('edit-deposit').value);
+      const ded = parseFloat(document.getElementById('edit-deduction').value);
+      const notes = document.getElementById('edit-notes').value;
+      await updateFeed(id, {
+        deposit_amount: dep,
+        expense_or_deduction: ded,
+        net_deposited: dep - ded,
+        notes: notes
+      });
+      showToast('✅ Entry updated!', 'success');
+      document.getElementById('modal-edit-feed').classList.add('hidden');
+    } catch(err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  
+  // Close Account
+  document.getElementById('form-close-account').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-close');
+    btn.disabled = true;
+    try {
+      const id = document.getElementById('close-acc-id').value;
+      const amt = parseFloat(document.getElementById('close-withdrawal').value);
+      const date = document.getElementById('close-date').value;
+      await closeAccount(id, amt, date);
+      showToast('✅ Account marked as matured!', 'success');
+      document.getElementById('modal-close-account').classList.add('hidden');
+      navigate('portfolios');
+    } catch(err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
     }
   });
 
@@ -297,8 +378,62 @@ function setupForms() {
 }
 
 // ============================================================
-// ACTIONS (Delete, Verify, Modals)
+// ACTIONS (Delete, Verify, Modals, Details)
 // ============================================================
+
+function loadMoreFeeds() {
+  renderLimit += 50;
+  renderAuditTrail();
+}
+
+function openEditFeed(id) {
+  const f = allFeeds.find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('edit-feed-id').value = f.id;
+  document.getElementById('edit-deposit').value = f.deposit_amount;
+  document.getElementById('edit-deduction').value = f.expense_or_deduction || 0;
+  document.getElementById('edit-notes').value = (f.receipt_or_slip_no !== 'DAILY_AGENT_RECEIPT' ? f.receipt_or_slip_no + ' ' : '') + (f.notes || '');
+  document.getElementById('modal-edit-feed').classList.remove('hidden');
+}
+
+function openCloseAccount(id) {
+  document.getElementById('close-acc-id').value = id;
+  document.getElementById('close-date').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('modal-close-account').classList.remove('hidden');
+}
+
+async function openAccountDetails(id) {
+  const acc = allAccounts.find(a => a.id === id);
+  if (!acc) return;
+  
+  const accFeeds = allFeeds.filter(f => f.account_number === id).sort((a,b) => new Date(b.feed_date) - new Date(a.feed_date));
+  const bal = accFeeds.reduce((sum, f) => sum + (f.net_deposited || 0), 0);
+  
+  document.getElementById('detail-bank-name').innerText = acc.bank_name;
+  document.getElementById('detail-balance').innerText = fmtMoney(bal);
+  
+  const statusEl = document.getElementById('detail-status');
+  statusEl.innerText = acc.status;
+  if (acc.status === 'Matured') statusEl.style.color = 'var(--warning)';
+  else statusEl.style.color = 'var(--accent)';
+  
+  document.getElementById('detail-acc-no').innerText = acc.account_number;
+  document.getElementById('detail-holder').innerText = acc.holder_name;
+  document.getElementById('detail-agent').innerText = acc.agent_name;
+  document.getElementById('detail-freq').innerText = acc.frequency;
+  document.getElementById('detail-opened').innerText = acc.opening_date;
+  
+  const tbody = document.querySelector('#table-detail-timeline tbody');
+  tbody.innerHTML = accFeeds.map(f => `
+    <tr>
+      <td>${f.feed_date}</td>
+      <td class="fw-bold">${fmtMoney(f.net_deposited)}</td>
+      <td class="text-xs text-dim">${f.receipt_or_slip_no}<br>${f.notes || ''}</td>
+    </tr>
+  `).join('');
+  
+  navigate('account-details');
+}
 
 async function handleVerifyFeed(id) {
   try {

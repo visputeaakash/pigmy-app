@@ -103,6 +103,34 @@ async function deleteAccount(accountNumber) {
   await batch.commit();
 }
 
+async function closeAccount(accountNumber, withdrawalAmount, maturityDate, notes) {
+  const safeAccNum = accountNumber.replace(/\//g, '-');
+  const batch = db.batch();
+  
+  // 1. Update the account status
+  batch.update(db.collection('accounts').doc(safeAccNum), {
+    status: 'Matured',
+    maturity_date: maturityDate
+  });
+  
+  // 2. Add a final withdrawal feed entry
+  const feedRef = db.collection('daily_feeds').doc();
+  batch.set(feedRef, {
+    account_number: safeAccNum,
+    feed_date: maturityDate,
+    day_of_week: new Date(maturityDate).toLocaleDateString('en-US', { weekday: 'long' }),
+    is_sunday: false,
+    deposit_amount: 0,
+    expense_or_deduction: withdrawalAmount,
+    net_deposited: -Math.abs(withdrawalAmount),
+    receipt_or_slip_no: 'MATURITY_WITHDRAWAL',
+    passbook_verified: true,
+    notes: notes || 'Account Closed/Matured'
+  });
+  
+  await batch.commit();
+}
+
 // ============================================================
 // DAILY FEEDS CRUD
 // ============================================================
@@ -174,10 +202,14 @@ async function deleteFeed(feedId) {
   await db.collection('daily_feeds').doc(feedId).delete();
 }
 
-async function verifyFeed(feedId) {
-  await db.collection('daily_feeds').doc(feedId).update({
+async function verifyFeed(id) {
+  await db.collection('daily_feeds').doc(id).update({
     passbook_verified: true
   });
+}
+
+async function updateFeed(id, data) {
+  await db.collection('daily_feeds').doc(id).update(data);
 }
 
 // ============================================================
