@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0e1a">
+  <title>Pigmy Passbook Ledger</title>
+  
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./css/style.css">
+  
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+
+  <!-- TOAST CONTAINER -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <div class="app-container">
+    
+    <header class="app-header">
+      <div>
+        <h1>🏦 Pigmy Strategist</h1>
+        <p>Live Sync &bull; Full CRUD Dashboard</p>
+      </div>
+    </header>
+
+    <!-- ==============================================
+         SCREENS
+         ============================================== -->
+    
+    <!-- 0. LOGIN SCREEN -->
+    <main id="screen-login" class="screen">
+      <div class="card" style="margin-top: 20px;">
+        <div class="card-title text-center" style="justify-content: center;">🔒 Secure Login</div>
+        <p class="text-dim text-sm text-center mb-4">Please log in to access your ledger.</p>
+        <form id="form-login">
+          <div class="form-group">
+            <label>Email Address</label>
+            <input type="email" id="login-email" required placeholder="admin@pigmy.app">
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="password" id="login-password" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block mt-4" id="btn-login">Login Securely</button>
+        </form>
+      </div>
+    </main>
+
+    <!-- 1. DASHBOARD SCREEN -->
+    <main id="screen-home" class="screen hidden">
+      <div class="kpi-grid">
+        <div class="kpi-card green">
+          <div class="kpi-label">Total Net Corpus</div>
+          <div class="kpi-val" id="kpi-corpus">₹0.00</div>
+          <div class="kpi-sub">Accessible Emergency Fund</div>
+        </div>
+        <div class="kpi-card blue">
+          <div class="kpi-val" id="kpi-sunday">₹0.00</div>
+          <div class="kpi-sub"><span id="kpi-sunday-days">0</span> Sunday Runs</div>
+        </div>
+        <div class="kpi-card yellow">
+          <div class="kpi-val" id="kpi-audit">0</div>
+          <div class="kpi-sub">Slips unprinted</div>
+        </div>
+        <div class="kpi-card white">
+          <div class="kpi-val" id="kpi-accounts">0</div>
+          <div class="kpi-sub">Active Accounts</div>
+        </div>
+      </div>
+      
+      <div class="card mt-4">
+        <div class="card-title">🚀 Quick Actions</div>
+        <div class="btn-group">
+          <button class="btn btn-primary btn-block" onclick="navigate('add-feed')">📝 Log Collection</button>
+          <button class="btn btn-ghost btn-block mt-2" onclick="navigate('audit')">🔎 View Audit Trail</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- 2. ADD FEED SCREEN -->
+    <main id="screen-add-feed" class="screen hidden">
+      <div class="card">
+        <div class="card-title">📝 Log Daily / Weekly Collection</div>
+        <form id="form-add-feed">
+          <div class="form-group">
+            <label>Target Account</label>
+            <select name="account_number" id="feed-account-select" required></select>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Collection Date</label>
+              <input type="date" name="feed_date" id="feed-date-input" required>
+            </div>
+            <div class="form-group">
+              <label>Amount (₹)</label>
+              <input type="number" step="any" name="deposit_amount" placeholder="100.0" required>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Deductions (₹)</label>
+              <input type="number" step="any" name="expense_or_deduction" value="0">
+            </div>
+            <div class="form-group">
+              <label>Slip / Receipt No</label>
+              <input type="text" name="receipt_or_slip_no" placeholder="SMS / Receipt #">
+            </div>
+          </div>
+          
+          <div class="checkbox-row">
+            <input type="checkbox" name="passbook_verified" id="feed-verified-cb">
+            <label for="feed-verified-cb">Already printed in passbook?</label>
+          </div>
+          
+          <div class="form-group mt-2">
+            <label>Notes</label>
+            <input type="text" name="notes" placeholder="e.g. Handed cash">
+          </div>
+          
+          <button type="submit" class="btn btn-primary btn-block mt-4" id="btn-save-feed">Save Collection</button>
+        </form>
+      </div>
+    </main>
+
+    <!-- 3. MONTH-END CUTOFF SCREEN -->
+    <main id="screen-cutoff" class="screen hidden">
+      <div class="card">
+        <div class="card-title">📅 Fast Month-End Cutoff</div>
+        <form id="form-add-cutoff">
+          <div class="form-group">
+            <label>Account</label>
+            <select name="account_number" id="cutoff-account-select" required></select>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Cutoff Date</label>
+              <input type="date" name="cutoff_date" id="cutoff-date-input" required>
+            </div>
+            <div class="form-group">
+              <label>Total Amount (₹)</label>
+              <input type="number" step="any" name="deposit_amount" placeholder="3100.0" required>
+            </div>
+          </div>
+          
+          <div class="form-group mt-2">
+            <label>Ref / Passbook Stamp</label>
+            <input type="text" name="ref_notes" value="PASSBOOK_MONTHLY_TOTAL">
+          </div>
+          
+          <button type="submit" class="btn btn-success btn-block mt-4" id="btn-save-cutoff">Record Month-End Total</button>
+        </form>
+      </div>
+    </main>
+
+    <!-- 4. ADD ACCOUNT SCREEN -->
+    <main id="screen-add-account" class="screen hidden">
+      <div class="card">
+        <div class="card-title">🏦 Register New Account</div>
+        <form id="form-add-account">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Account Number</label>
+              <input type="text" name="account_number" required>
+            </div>
+            <div class="form-group">
+              <label>Holder Name</label>
+              <input type="text" name="holder_name" required>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Bank / Society</label>
+              <input type="text" name="bank_name" required>
+            </div>
+            <div class="form-group">
+              <label>Agent Name</label>
+              <input type="text" name="agent_name" required>
+            </div>
+          </div>
+          
+          <div class="form-row">
+            <div class="form-group">
+              <label>Frequency</label>
+              <select name="frequency">
+                <option value="Daily">Daily</option>
+                <option value="Weekly">Weekly</option>
+                <option value="Monthly">Monthly</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Opening Date</label>
+              <input type="date" name="opening_date" id="acc-date-input" required>
+            </div>
+          </div>
+          
+          <button type="submit" class="btn btn-ghost btn-block mt-4" id="btn-save-account" style="background:#475569; color:#fff;">Register Account</button>
+        </form>
+      </div>
+    </main>
+
+    <!-- 5. PORTFOLIOS SCREEN -->
+    <main id="screen-portfolios" class="screen hidden">
+      <div class="card">
+        <div class="card-title" style="justify-content:space-between;">
+          <span>🏛️ Account Portfolios</span>
+          <button class="btn btn-sm btn-ghost" onclick="navigate('add-account')">+ Add</button>
+        </div>
+        <div class="table-wrap">
+          <table id="table-portfolios">
+            <thead>
+              <tr>
+                <th>Bank / Society</th>
+                <th>Acc No</th>
+                <th>Agent</th>
+                <th>Balance</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Dynamic rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- 6. AUDIT TRAIL SCREEN -->
+    <main id="screen-audit" class="screen hidden">
+      <div class="card">
+        <div class="card-title">🔎 Collections Audit Trail</div>
+        
+        <div class="filter-bar">
+          <label>Filter:</label>
+          <select id="audit-filter" onchange="renderAuditTrail()">
+            <option value="">-- All Accounts --</option>
+          </select>
+        </div>
+        
+        <div class="table-wrap">
+          <table id="table-audit">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Bank</th>
+                <th>Net</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Dynamic rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <!-- 7. EXPORT SCREEN -->
+    <main id="screen-export" class="screen hidden">
+      <div class="card">
+        <div class="card-title">📊 Export Data</div>
+        <p class="text-dim text-sm mb-4">Generate CSV or Markdown reports locally on your device.</p>
+        <div class="btn-group">
+          <button class="btn btn-warning btn-block" onclick="exportCSV()">📥 Download CSV</button>
+          <button class="btn btn-success btn-block mt-4" onclick="exportMarkdown()">📄 Download AI MD Dossier</button>
+        </div>
+      </div>
+    </main>
+
+  </div> <!-- End App Container -->
+
+  <!-- BOTTOM NAVIGATION -->
+  <nav class="bottom-nav">
+    <a class="nav-item active" data-target="home" onclick="navigate('home')">
+      <span class="nav-icon">🏠</span>
+      <span>Home</span>
+    </a>
+    <a class="nav-item" data-target="add-feed" onclick="navigate('add-feed')">
+      <span class="nav-icon">📝</span>
+      <span>Add</span>
+    </a>
+    <a class="nav-item" data-target="cutoff" onclick="navigate('cutoff')">
+      <span class="nav-icon">📅</span>
+      <span>Cutoff</span>
+    </a>
+    <a class="nav-item" data-target="audit" onclick="navigate('audit')">
+      <span class="nav-icon">📋</span>
+      <span>Audit</span>
+    </a>
+    <a class="nav-item" data-target="more" onclick="showMoreMenu(this)">
+      <span class="nav-icon">⚙️</span>
+      <span>More</span>
+    </a>
+  </nav>
+
+  <!-- MODAL LAYER -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3 id="modal-title">Confirm Action</h3>
+      <p id="modal-text">Are you sure?</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-danger" id="modal-confirm-btn">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MORE MENU MODAL -->
+  <div id="more-menu-overlay" class="modal-overlay hidden" onclick="if(event.target===this) hideMoreMenu()">
+    <div class="modal-box" style="margin-top:auto; margin-bottom:100px;">
+      <h3>More Options</h3>
+      <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px;">
+        <button class="btn btn-ghost btn-block" onclick="hideMoreMenu(); navigate('portfolios')">🏛️ Account Portfolios</button>
+        <button class="btn btn-ghost btn-block" onclick="hideMoreMenu(); navigate('add-account')">🏦 Add New Account</button>
+        <button class="btn btn-ghost btn-block" onclick="hideMoreMenu(); navigate('export')">📊 Export Data</button>
+        <button class="btn btn-danger btn-block mt-4" onclick="hideMoreMenu(); logoutUser()">🚪 Logout</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- App Scripts -->
+  <script src="./js/db.js"></script>
+  <script src="./js/export.js"></script>
+  <script src="./js/app.js"></script>
+
+</body>
+</html>
