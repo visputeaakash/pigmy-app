@@ -1,6 +1,6 @@
 /* ========================================
-   PIGMY PWA — Main App Logic
-   Routing, DOM manipulation, form handling
+   PIGMY PWA — Main App Logic v3.0
+   Routing, DOM, Analytics, Risk, Charts
    ======================================== */
 
 // Global State
@@ -41,6 +41,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Initialize Firebase DB
   await initDB();
 
+  // Initialize i18n
+  if (typeof initI18n === 'function') initI18n();
+
   // Authentication State Listener
   onAuthStateChange(user => {
     if (user) {
@@ -52,16 +55,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         allAccounts = accounts;
         updateAccountDropdowns();
         renderPortfolios();
+        refreshDashboardFull();
       });
 
       unsubscribeFeeds = onFeedsChange(feeds => {
         allFeeds = feeds;
-        updateDashboard();
+        refreshDashboardFull();
         renderAuditTrail();
-        renderPortfolios(); // re-render balances
+        renderPortfolios();
       });
       
-      updateDashboard();
+      refreshDashboardFull();
     } else {
       if (unsubscribeAccounts) unsubscribeAccounts();
       if (unsubscribeFeeds) unsubscribeFeeds();
@@ -83,14 +87,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 // NAVIGATION (SPA Routing)
 // ============================================================
 function navigate(screenId) {
-  // Hide all screens
   document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
-  
-  // Show target screen
   document.getElementById(`screen-${screenId}`).classList.remove('hidden');
   window.scrollTo(0, 0);
 
-  // Update bottom nav
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   const navBtn = document.querySelector(`.nav-item[data-target="${screenId}"]`);
   if (navBtn) navBtn.classList.add('active');
@@ -106,19 +106,239 @@ function hideMoreMenu() {
 }
 
 // ============================================================
-// UI UPDATERS
+// UI UPDATERS — BUG #3 FIX: Compute from cached data, ZERO Firestore queries
 // ============================================================
 
 const fmtMoney = (num) => '₹' + (num || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-async function updateDashboard() {
-  const stats = await getDashboardStats();
-  document.getElementById('kpi-corpus').innerText = fmtMoney(stats.totalNet);
-  document.getElementById('kpi-sunday').innerText = fmtMoney(stats.sundayTotal);
-  document.getElementById('kpi-sunday-days').innerText = stats.sundayCount;
-  document.getElementById('kpi-audit').innerText = stats.pendingSlips;
-  document.getElementById('kpi-accounts').innerText = stats.activeAccounts;
+function refreshDashboardFull() {
+  updateDashboardFromCache();
+  computeAnalytics();
+  computeRiskAnalysis();
+  computePortfolioAdvantages();
+  if (typeof renderAllCharts === 'function') {
+    renderAllCharts(allFeeds, allAccounts);
+  }
 }
+
+// BUG #3 FIX: No more getDashboardStats() Firestore calls
+function updateDashboardFromCache() {
+  let totalNet = 0, sundayCount = 0, sundayTotal = 0, pendingSlips = 0;
+  
+  allFeeds.forEach(f => {
+    totalNet += f.net_deposited || 0;
+    if (f.is_sunday) {
+      sundayCount++;
+      sundayTotal += f.net_deposited || 0;
+    }
+    if (!f.passbook_verified) pendingSlips++;
+  });
+
+  const activeAccounts = allAccounts.filter(a => a.status === 'Active').length;
+
+  document.getElementById('kpi-corpus').innerText = fmtMoney(totalNet);
+  document.getElementById('kpi-sunday').innerText = fmtMoney(sundayTotal);
+  document.getElementById('kpi-sunday-days').innerText = sundayCount;
+  document.getElementById('kpi-audit').innerText = pendingSlips;
+  document.getElementById('kpi-accounts').innerText = activeAccounts;
+}
+
+// ============================================================
+// ANALYTICS (Computed from cached data)
+// ============================================================
+
+function computeAnalytics() {
+  // Average Daily Collection
+  const uniqueDays = new Set(allFeeds.map(f => f.feed_date).filter(Boolean));
+  const totalNet = allFeeds.reduce((s, f) => s + (f.net_deposited || 0), 0);
+  const avgDaily = uniqueDays.size > 0 ? totalNet / uniqueDays.size : 0;
+  document.getElementById('kpi-avg-daily').innerText = fmtMoney(avgDaily);
+
+  // Best Performing Account
+  const accBal = {};
+  allFeeds.forEach(f => {
+    accBal[f.account_number] = (accBal[f.account_number] || 0) + (f.net_deposited || 0);
+  });
+  let bestAcc = '—';
+  let bestBal = 0;
+  Object.entries(accBal).forEach(([id, bal]) => {
+    if (bal > bestBal) {
+      bestBal = bal;
+      const acc = allAccounts.find(a => a.id === id);
+      bestAcc = acc ? acc.bank_name : id;
+    }
+  });
+  document.getElementById('kpi-best-account').innerText = bestAcc;
+
+  // Consistency Score (% of weekdays in last 30 days with at least 1 collection)
+  const today = new Date();
+  let weekdays = 0;
+  let activeDays = 0;
+  const feedDates = new Set(allFeeds.map(f => f.feed_date));
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const dow = d.getDay();
+    if (dow !== 0 && dow !== 6) { // Mon-Fri
+      weekdays++;
+      const dateStr = d.toISOString().slice(0, 10);
+      if (feedDates.has(dateStr)) activeDays++;
+    }
+  }
+  const consistency = weekdays > 0 ? Math.round((activeDays / weekdays) * 100) : 0;
+  document.getElementById('kpi-consistency').innerText = consistency + '%';
+
+  // Days since last collection
+  if (allFeeds.length > 0) {
+    const sortedDates = allFeeds.map(f => f.feed_date).filter(Boolean).sort().reverse();
+    if (sortedDates[0]) {
+      const lastDate = new Date(sortedDates[0]);
+      const diffMs = today - lastDate;
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      const el = document.getElementById('kpi-staleness');
+      el.innerText = diffDays + ' days';
+      el.style.color = diffDays > 7 ? 'var(--danger)' : diffDays > 3 ? 'var(--warning)' : 'var(--accent)';
+    }
+  }
+}
+
+// ============================================================
+// RISK ANALYSIS
+// ============================================================
+
+function computeRiskAnalysis() {
+  const container = document.getElementById('risk-analysis-body');
+  if (!container) return;
+  
+  const today = new Date();
+  const activeAccounts = allAccounts.filter(a => a.status === 'Active');
+  
+  if (activeAccounts.length === 0) {
+    container.innerHTML = '<p class="text-dim text-sm">No active accounts to analyze.</p>';
+    return;
+  }
+
+  const results = activeAccounts.map(acc => {
+    const accFeeds = allFeeds.filter(f => f.account_number === acc.id);
+    const sortedDates = accFeeds.map(f => f.feed_date).filter(Boolean).sort().reverse();
+    const lastDate = sortedDates[0] ? new Date(sortedDates[0]) : null;
+    const daysSinceLast = lastDate ? Math.floor((today - lastDate) / (1000*60*60*24)) : 999;
+    
+    // Consistency check (last 30 days)
+    let expectedDays = 0;
+    let actualDays = 0;
+    const feedDates = new Set(accFeeds.map(f => f.feed_date));
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      if (d.getDay() !== 0) { // Exclude Sundays
+        expectedDays++;
+        if (feedDates.has(d.toISOString().slice(0, 10))) actualDays++;
+      }
+    }
+    const hitRate = expectedDays > 0 ? actualDays / expectedDays : 0;
+
+    let level, color, icon, reason;
+    if (daysSinceLast >= 30) {
+      level = t('risk.high'); color = 'var(--danger)'; icon = '🔴'; reason = t('risk.noCollection');
+    } else if (hitRate < 0.5) {
+      level = t('risk.medium'); color = 'var(--warning)'; icon = '🟡'; reason = t('risk.inconsistent');
+    } else {
+      level = t('risk.low'); color = 'var(--accent)'; icon = '🟢'; reason = t('risk.regular');
+    }
+
+    return { bank: acc.bank_name, id: acc.id, level, color, icon, reason, daysSinceLast };
+  });
+
+  // Sort: high risk first
+  results.sort((a, b) => {
+    const order = { '🔴': 0, '🟡': 1, '🟢': 2 };
+    return (order[a.icon] || 2) - (order[b.icon] || 2);
+  });
+
+  container.innerHTML = results.map(r => `
+    <div class="risk-row">
+      <span class="risk-icon">${r.icon}</span>
+      <div class="risk-info">
+        <strong>${r.bank}</strong>
+        <span class="text-xs text-dim">${r.reason}</span>
+      </div>
+      <span class="badge" style="background:${r.color}20; color:${r.color}; border:1px solid ${r.color}40;">${r.level}</span>
+    </div>
+  `).join('');
+}
+
+// ============================================================
+// PORTFOLIO ADVANTAGES
+// ============================================================
+
+function computePortfolioAdvantages() {
+  const container = document.getElementById('portfolio-advantages-body');
+  if (!container) return;
+  
+  const totalNet = allFeeds.reduce((s, f) => s + (f.net_deposited || 0), 0);
+  const activeAccounts = allAccounts.filter(a => a.status === 'Active');
+  const uniqueBanks = new Set(activeAccounts.map(a => a.bank_name));
+  
+  // Monthly growth (this month vs last month)
+  const now = new Date();
+  const thisMonth = now.toISOString().slice(0, 7);
+  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonth = lastMonthDate.toISOString().slice(0, 7);
+  
+  let thisMonthTotal = 0, lastMonthTotal = 0;
+  allFeeds.forEach(f => {
+    if (!f.feed_date) return;
+    const m = f.feed_date.substring(0, 7);
+    if (m === thisMonth) thisMonthTotal += f.net_deposited || 0;
+    if (m === lastMonth) lastMonthTotal += f.net_deposited || 0;
+  });
+  
+  const growthPct = lastMonthTotal > 0 ? ((thisMonthTotal - lastMonthTotal) / lastMonthTotal * 100).toFixed(1) : '—';
+  
+  // Emergency coverage (assuming ₹15,000/month expenses)
+  const monthlyExpense = 15000;
+  const emergencyMonths = monthlyExpense > 0 ? (totalNet / monthlyExpense).toFixed(1) : '0';
+
+  const insights = [
+    {
+      icon: '🛡️',
+      label: t('portfolio.emergency'),
+      value: `${emergencyMonths} months`,
+      desc: `₹${monthlyExpense.toLocaleString('en-IN')}/mo assumed`,
+      color: parseFloat(emergencyMonths) >= 3 ? 'var(--accent)' : 'var(--danger)'
+    },
+    {
+      icon: '🏦',
+      label: t('portfolio.diversification'),
+      value: `${uniqueBanks.size} banks`,
+      desc: `${activeAccounts.length} active accounts`,
+      color: uniqueBanks.size >= 2 ? 'var(--accent)' : 'var(--warning)'
+    },
+    {
+      icon: '📈',
+      label: t('portfolio.growth'),
+      value: growthPct === '—' ? '—' : (growthPct >= 0 ? '+' + growthPct + '%' : growthPct + '%'),
+      desc: `vs last month`,
+      color: growthPct === '—' ? 'var(--text-dim)' : (parseFloat(growthPct) >= 0 ? 'var(--accent)' : 'var(--danger)')
+    }
+  ];
+
+  container.innerHTML = `<div class="advantages-grid">${insights.map(i => `
+    <div class="advantage-item">
+      <span class="advantage-icon">${i.icon}</span>
+      <div>
+        <div class="text-xs text-dim">${i.label}</div>
+        <div class="fw-bold" style="color:${i.color}; font-size:1.1rem;">${i.value}</div>
+        <div class="text-xs text-dim">${i.desc}</div>
+      </div>
+    </div>
+  `).join('')}</div>`;
+}
+
+// ============================================================
+// DROPDOWNS
+// ============================================================
 
 function updateAccountDropdowns() {
   const feedSelect = document.getElementById('feed-account-select');
@@ -133,7 +353,7 @@ function updateAccountDropdowns() {
   feedSelect.innerHTML = optionsHTML;
   cutoffSelect.innerHTML = optionsHTML;
   
-  const filterOptionsHTML = '<option value="">-- All Accounts --</option>' + 
+  const filterOptionsHTML = `<option value="" data-i18n="audit.allAccounts">${t('audit.allAccounts')}</option>` + 
     allAccounts.map(a => `<option value="${a.id}">${a.bank_name} (${a.id})</option>`).join('');
   auditFilter.innerHTML = filterOptionsHTML;
 }
@@ -142,35 +362,44 @@ function updateAccountDropdowns() {
 // RENDERERS
 // ============================================================
 
-async function renderPortfolios() {
+// BUG #3 FIX: renderPortfolios now computes from cached data
+function renderPortfolios() {
   const tbody = document.querySelector('#table-portfolios tbody');
-  const balances = await getAccountBalances();
   
-  if (balances.length === 0) {
+  if (allAccounts.length === 0) {
     tbody.innerHTML = `<tr><td colspan="6" class="text-center text-dim">No accounts found.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = balances.map(acc => {
+  // Compute balances from cached allFeeds
+  const feedsByAcc = {};
+  allFeeds.forEach(f => {
+    if (!feedsByAcc[f.account_number]) feedsByAcc[f.account_number] = { total: 0, unverified: 0 };
+    feedsByAcc[f.account_number].total += f.net_deposited || 0;
+    if (!f.passbook_verified) feedsByAcc[f.account_number].unverified++;
+  });
+
+  tbody.innerHTML = allAccounts.map(acc => {
+    const feeds = feedsByAcc[acc.id] || { total: 0, unverified: 0 };
     const statusBadge = acc.status === 'Active' 
       ? `<span class="badge badge-status">${acc.status}</span>`
       : `<span class="badge badge-danger">${acc.status}</span>`;
       
-    const slips = acc.unverified_count > 0
-      ? `<span class="badge badge-pending text-xs">${acc.unverified_count} Pending</span>`
+    const slips = feeds.unverified > 0
+      ? `<span class="badge badge-pending text-xs">${feeds.unverified} Pending</span>`
       : `<span class="badge badge-verified text-xs">Verified</span>`;
       
     return `
       <tr>
         <td><strong>${acc.bank_name}</strong><br><span class="text-xs text-dim">${acc.holder_name}</span></td>
-        <td><code>${acc.account_number}</code></td>
+        <td><code>${acc.id}</code></td>
         <td>${acc.agent_name}</td>
-        <td class="text-accent fw-bold">${fmtMoney(acc.total_balance)}<br>${slips}</td>
+        <td class="text-accent fw-bold">${fmtMoney(feeds.total)}<br>${slips}</td>
         <td>${statusBadge}</td>
         <td>
           <div class="btn-group" style="flex-wrap:nowrap;">
-            <button class="btn btn-sm btn-ghost" onclick="openAccountDetails('${acc.id}')" title="View Details">👁️</button>
-            ${acc.status === 'Active' ? `<button class="btn btn-sm btn-warning" onclick="openCloseAccount('${acc.id}')" title="Mature Account">Close</button>` : ''}
+            <button class="btn btn-sm btn-ghost" onclick="openAccountDetails('${acc.id}')" title="View">👁️</button>
+            ${acc.status === 'Active' ? `<button class="btn btn-sm btn-warning" onclick="openCloseAccount('${acc.id}')" title="Close">Close</button>` : ''}
             <button class="btn btn-sm btn-danger" onclick="confirmDeleteAccount('${acc.id}')" title="Delete">Del</button>
           </div>
         </td>
@@ -206,33 +435,29 @@ function renderAuditTrail() {
     document.getElementById('btn-load-more').classList.add('hidden');
   }
 
-  // Helper to get bank name
   const getBank = accNum => {
     const acc = allAccounts.find(a => a.id === accNum);
     return acc ? acc.bank_name : accNum;
   };
 
-  tbody.innerHTML = filteredFeeds.map(f => {
+  tbody.innerHTML = toRender.map(f => {
+    const dayLabel = (f.day_of_week || '---').substring(0, 3);
     const status = f.passbook_verified
       ? `<span class="badge badge-verified">✅</span>`
       : `<span class="badge badge-pending">⚠️</span>`;
       
-    const actionBtns = f.passbook_verified
-      ? `<div class="btn-group">
-           <button class="btn btn-sm btn-ghost" onclick="openEditFeed('${f.id}')">✏️</button>
-           <button class="btn btn-sm btn-danger" onclick="confirmDeleteFeed('${f.id}')">🗑️</button>
-         </div>`
-      : `<div class="btn-group">
-           <button class="btn btn-sm btn-warning" onclick="handleVerifyFeed('${f.id}')">Stamp</button>
-           <button class="btn btn-sm btn-ghost" onclick="openEditFeed('${f.id}')">✏️</button>
-           <button class="btn btn-sm btn-danger" onclick="confirmDeleteFeed('${f.id}')">🗑️</button>
-         </div>`;
+    const actionBtns = `
+      <div class="btn-group" style="flex-wrap:nowrap;">
+        ${!f.passbook_verified ? `<button class="btn btn-sm btn-warning" onclick="handleVerifyFeed('${f.id}')">Stamp</button>` : ''}
+        <button class="btn btn-sm btn-ghost" onclick="openEditFeed('${f.id}')">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="confirmDeleteFeed('${f.id}')">🗑️</button>
+      </div>`;
 
     return `
       <tr>
-        <td>${f.feed_date}<br><span class="text-xs text-dim">${f.day_of_week.substring(0,3)}</span></td>
+        <td>${f.feed_date}<br><span class="text-xs text-dim">${dayLabel}</span></td>
         <td>${getBank(f.account_number)}<br><code>${f.account_number}</code></td>
-        <td class="fw-bold">${fmtMoney(f.net_deposited)}<br><span class="text-xs text-dim">${f.receipt_or_slip_no}</span></td>
+        <td class="fw-bold">${fmtMoney(f.net_deposited)}<br><span class="text-xs text-dim">${f.receipt_or_slip_no || ''}</span></td>
         <td>${status}</td>
         <td>${actionBtns}</td>
       </tr>
@@ -262,7 +487,7 @@ function setupForms() {
       showToast('Error: ' + err.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.innerText = 'Login Securely';
+      btn.innerText = t('login.btn');
     }
   });
 
@@ -326,13 +551,13 @@ function setupForms() {
       await addFeed(data);
       showToast('✅ Collection saved!', 'success');
       e.target.reset();
-      document.getElementById('feed-date-input').value = new Date().toISOString().slice(0, 10); // reset date to today
+      document.getElementById('feed-date-input').value = new Date().toISOString().slice(0, 10);
       navigate('home');
     } catch (err) {
       showToast('Error: ' + err.message, 'error');
     } finally {
       btn.disabled = false;
-      btn.innerText = 'Save Collection';
+      btn.innerText = t('feed.save');
     }
   });
 
@@ -417,7 +642,7 @@ async function openAccountDetails(id) {
   if (acc.status === 'Matured') statusEl.style.color = 'var(--warning)';
   else statusEl.style.color = 'var(--accent)';
   
-  document.getElementById('detail-acc-no').innerText = acc.account_number;
+  document.getElementById('detail-acc-no').innerText = acc.id;
   document.getElementById('detail-holder').innerText = acc.holder_name;
   document.getElementById('detail-agent').innerText = acc.agent_name;
   document.getElementById('detail-freq').innerText = acc.frequency;
@@ -428,7 +653,7 @@ async function openAccountDetails(id) {
     <tr>
       <td>${f.feed_date}</td>
       <td class="fw-bold">${fmtMoney(f.net_deposited)}</td>
-      <td class="text-xs text-dim">${f.receipt_or_slip_no}<br>${f.notes || ''}</td>
+      <td class="text-xs text-dim">${f.receipt_or_slip_no || ''}<br>${f.notes || ''}</td>
     </tr>
   `).join('');
   
@@ -483,7 +708,6 @@ function confirmDeleteFeed(id) {
 
 function confirmDeleteAccount(id) {
   showModal('Delete Account', `Type 'DELETE' to permanently purge account ${id} and ALL its feeds.`, async () => {
-    // Basic protection
     const conf = prompt(`Type DELETE to purge account ${id}:`);
     if (conf === 'DELETE') {
       await deleteAccount(id);
@@ -503,7 +727,6 @@ function showToast(message, type = 'info') {
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   
-  // Icon map
   let icon = 'ℹ️';
   if (type === 'success') icon = '✅';
   if (type === 'error') icon = '❌';

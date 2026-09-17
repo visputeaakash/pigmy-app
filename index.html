@@ -14,6 +14,8 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -24,9 +26,13 @@
     
     <header class="app-header">
       <div>
-        <h1 style="display:flex; align-items:center; gap:8px;">🏦 Pigmy Strategist <span id="network-badge" class="badge badge-danger text-xs hidden">Offline</span></h1>
-        <p>Live Sync &bull; Full CRUD Dashboard</p>
+        <h1 style="display:flex; align-items:center; gap:8px;">
+          <span data-i18n="header.title">🏦 Pigmy Strategist</span>
+          <span id="network-badge" class="badge badge-danger text-xs hidden" data-i18n="header.offline">Offline</span>
+        </h1>
+        <p data-i18n="header.subtitle">Live Sync &bull; Full CRUD Dashboard</p>
       </div>
+      <button class="btn-lang" id="btn-lang" onclick="cycleLang()">🌐 EN</button>
     </header>
 
     <!-- ==============================================
@@ -36,49 +42,110 @@
     <!-- 0. LOGIN SCREEN -->
     <main id="screen-login" class="screen">
       <div class="card" style="margin-top: 20px;">
-        <div class="card-title text-center" style="justify-content: center;">🔒 Secure Login</div>
-        <p class="text-dim text-sm text-center mb-4">Please log in to access your ledger.</p>
+        <div class="card-title text-center" style="justify-content: center;" data-i18n="login.title">🔒 Secure Login</div>
+        <p class="text-dim text-sm text-center mb-4" data-i18n="login.subtitle">Please log in to access your ledger.</p>
         <form id="form-login">
           <div class="form-group">
-            <label>Email Address</label>
+            <label data-i18n="login.email">Email Address</label>
             <input type="email" id="login-email" required placeholder="admin@pigmy.app">
           </div>
           <div class="form-group">
-            <label>Password</label>
+            <label data-i18n="login.password">Password</label>
             <input type="password" id="login-password" required>
           </div>
-          <button type="submit" class="btn btn-primary btn-block mt-4" id="btn-login">Login Securely</button>
+          <button type="submit" class="btn btn-primary btn-block mt-4" id="btn-login" data-i18n="login.btn">Login Securely</button>
         </form>
       </div>
     </main>
 
     <!-- 1. DASHBOARD SCREEN -->
     <main id="screen-home" class="screen hidden">
+      <!-- Primary KPIs -->
       <div class="kpi-grid">
         <div class="kpi-card green">
-          <div class="kpi-label">Total Net Corpus</div>
+          <div class="kpi-label" data-i18n="kpi.corpus">Total Net Corpus</div>
           <div class="kpi-val" id="kpi-corpus">₹0.00</div>
-          <div class="kpi-sub">Accessible Emergency Fund</div>
+          <div class="kpi-sub" data-i18n="kpi.corpus.sub">Accessible Emergency Fund</div>
         </div>
         <div class="kpi-card blue">
           <div class="kpi-val" id="kpi-sunday">₹0.00</div>
-          <div class="kpi-sub"><span id="kpi-sunday-days">0</span> Sunday Runs</div>
+          <div class="kpi-sub"><span id="kpi-sunday-days">0</span> <span data-i18n="kpi.sunday.sub">Sunday Runs</span></div>
         </div>
         <div class="kpi-card yellow">
           <div class="kpi-val" id="kpi-audit">0</div>
-          <div class="kpi-sub">Slips unprinted</div>
+          <div class="kpi-sub" data-i18n="kpi.audit.sub">Slips unprinted</div>
         </div>
         <div class="kpi-card white">
           <div class="kpi-val" id="kpi-accounts">0</div>
-          <div class="kpi-sub">Active Accounts</div>
+          <div class="kpi-sub" data-i18n="kpi.accounts.sub">Active Accounts</div>
         </div>
       </div>
-      
+
+      <!-- Analytics KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi-card" style="border-left:3px solid var(--primary);">
+          <div class="kpi-label" data-i18n="kpi.avgDaily">Avg Daily Collection</div>
+          <div class="kpi-val" id="kpi-avg-daily" style="font-size:1.1rem;">₹0</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid var(--accent);">
+          <div class="kpi-label" data-i18n="kpi.bestAccount">Best Performing</div>
+          <div class="kpi-val" id="kpi-best-account" style="font-size:0.9rem; word-break:break-all;">—</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid var(--warning);">
+          <div class="kpi-label" data-i18n="kpi.consistency">Consistency Score</div>
+          <div class="kpi-val" id="kpi-consistency" style="font-size:1.1rem;">0%</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid var(--danger);">
+          <div class="kpi-label" data-i18n="kpi.staleness">Days Since Last</div>
+          <div class="kpi-val" id="kpi-staleness" style="font-size:1.1rem;">—</div>
+        </div>
+      </div>
+
+      <!-- Charts -->
       <div class="card mt-4">
-        <div class="card-title">🚀 Quick Actions</div>
+        <div class="card-title" data-i18n="chart.monthly">📈 Monthly Collection Trend</div>
+        <div class="chart-container"><canvas id="chart-monthly"></canvas></div>
+      </div>
+
+      <div class="charts-row mt-4">
+        <div class="card">
+          <div class="card-title" data-i18n="chart.distribution">🍩 Account Distribution</div>
+          <div class="chart-container chart-sm"><canvas id="chart-distribution"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-title" data-i18n="chart.daily">📉 Last 30 Days Activity</div>
+          <div class="chart-container chart-sm"><canvas id="chart-daily"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Risk Analysis -->
+      <div class="card mt-4">
+        <div class="card-title" data-i18n="risk.title">🔍 Risk Analysis</div>
+        <div id="risk-analysis-body">
+          <p class="text-dim text-sm">Loading...</p>
+        </div>
+      </div>
+
+      <!-- Portfolio Advantages -->
+      <div class="card mt-4">
+        <div class="card-title" data-i18n="portfolio.title">🏛️ Portfolio Advantages</div>
+        <div id="portfolio-advantages-body">
+          <p class="text-dim text-sm">Loading...</p>
+        </div>
+      </div>
+
+      <!-- Fund Tips -->
+      <div class="card mt-4 tips-card">
+        <div class="card-title" data-i18n="tips.title">💡 Fund Management Tips</div>
+        <p id="tip-text" class="tip-text">Loading tips...</p>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="card mt-4">
+        <div class="card-title" data-i18n="quick.title">🚀 Quick Actions</div>
         <div class="btn-group">
-          <button class="btn btn-primary btn-block" onclick="navigate('add-feed')">📝 Log Collection</button>
-          <button class="btn btn-ghost btn-block mt-2" onclick="navigate('audit')">🔎 View Audit Trail</button>
+          <button class="btn btn-primary btn-block" onclick="navigate('add-feed')" data-i18n="quick.log">📝 Log Collection</button>
+          <button class="btn btn-ghost btn-block mt-2" onclick="navigate('audit')" data-i18n="quick.audit">🔎 View Audit Trail</button>
         </div>
       </div>
     </main>
@@ -86,46 +153,46 @@
     <!-- 2. ADD FEED SCREEN -->
     <main id="screen-add-feed" class="screen hidden">
       <div class="card">
-        <div class="card-title">📝 Log Daily / Weekly Collection</div>
+        <div class="card-title" data-i18n="feed.title">📝 Log Daily / Weekly Collection</div>
         <form id="form-add-feed">
           <div class="form-group">
-            <label>Target Account</label>
+            <label data-i18n="feed.account">Target Account</label>
             <select name="account_number" id="feed-account-select" required></select>
           </div>
           
           <div class="form-row">
             <div class="form-group">
-              <label>Collection Date</label>
+              <label data-i18n="feed.date">Collection Date</label>
               <input type="date" name="feed_date" id="feed-date-input" required>
             </div>
             <div class="form-group">
-              <label>Amount (₹)</label>
+              <label data-i18n="feed.amount">Amount (₹)</label>
               <input type="number" step="any" name="deposit_amount" placeholder="100.0" required>
             </div>
           </div>
           
           <div class="form-row">
             <div class="form-group">
-              <label>Deductions (₹)</label>
+              <label data-i18n="feed.deductions">Deductions (₹)</label>
               <input type="number" step="any" name="expense_or_deduction" value="0">
             </div>
             <div class="form-group">
-              <label>Slip / Receipt No</label>
+              <label data-i18n="feed.slip">Slip / Receipt No</label>
               <input type="text" name="receipt_or_slip_no" placeholder="SMS / Receipt #">
             </div>
           </div>
           
           <div class="checkbox-row">
             <input type="checkbox" name="passbook_verified" id="feed-verified-cb">
-            <label for="feed-verified-cb">Already printed in passbook?</label>
+            <label for="feed-verified-cb" data-i18n="feed.verified">Already printed in passbook?</label>
           </div>
           
           <div class="form-group mt-2">
-            <label>Notes</label>
+            <label data-i18n="feed.notes">Notes</label>
             <input type="text" name="notes" placeholder="e.g. Handed cash">
           </div>
           
-          <button type="submit" class="btn btn-primary btn-block mt-4" id="btn-save-feed">Save Collection</button>
+          <button type="submit" class="btn btn-primary btn-block mt-4" id="btn-save-feed" data-i18n="feed.save">Save Collection</button>
         </form>
       </div>
     </main>
@@ -133,30 +200,30 @@
     <!-- 3. MONTH-END CUTOFF SCREEN -->
     <main id="screen-cutoff" class="screen hidden">
       <div class="card">
-        <div class="card-title">📅 Fast Month-End Cutoff</div>
+        <div class="card-title" data-i18n="cutoff.title">📅 Fast Month-End Cutoff</div>
         <form id="form-add-cutoff">
           <div class="form-group">
-            <label>Account</label>
+            <label data-i18n="cutoff.account">Account</label>
             <select name="account_number" id="cutoff-account-select" required></select>
           </div>
           
           <div class="form-row">
             <div class="form-group">
-              <label>Cutoff Date</label>
+              <label data-i18n="cutoff.date">Cutoff Date</label>
               <input type="date" name="cutoff_date" id="cutoff-date-input" required>
             </div>
             <div class="form-group">
-              <label>Total Amount (₹)</label>
+              <label data-i18n="cutoff.amount">Total Amount (₹)</label>
               <input type="number" step="any" name="deposit_amount" placeholder="3100.0" required>
             </div>
           </div>
           
           <div class="form-group mt-2">
-            <label>Ref / Passbook Stamp</label>
+            <label data-i18n="cutoff.ref">Ref / Passbook Stamp</label>
             <input type="text" name="ref_notes" value="PASSBOOK_MONTHLY_TOTAL">
           </div>
           
-          <button type="submit" class="btn btn-success btn-block mt-4" id="btn-save-cutoff">Record Month-End Total</button>
+          <button type="submit" class="btn btn-success btn-block mt-4" id="btn-save-cutoff" data-i18n="cutoff.save">Record Month-End Total</button>
         </form>
       </div>
     </main>
@@ -164,46 +231,46 @@
     <!-- 4. ADD ACCOUNT SCREEN -->
     <main id="screen-add-account" class="screen hidden">
       <div class="card">
-        <div class="card-title">🏦 Register New Account</div>
+        <div class="card-title" data-i18n="account.title">🏦 Register New Account</div>
         <form id="form-add-account">
           <div class="form-row">
             <div class="form-group">
-              <label>Account Number</label>
+              <label data-i18n="account.number">Account Number</label>
               <input type="text" name="account_number" required>
             </div>
             <div class="form-group">
-              <label>Holder Name</label>
+              <label data-i18n="account.holder">Holder Name</label>
               <input type="text" name="holder_name" required>
             </div>
           </div>
           
           <div class="form-row">
             <div class="form-group">
-              <label>Bank / Society</label>
+              <label data-i18n="account.bank">Bank / Society</label>
               <input type="text" name="bank_name" required>
             </div>
             <div class="form-group">
-              <label>Agent Name</label>
+              <label data-i18n="account.agent">Agent Name</label>
               <input type="text" name="agent_name" required>
             </div>
           </div>
           
           <div class="form-row">
             <div class="form-group">
-              <label>Frequency</label>
+              <label data-i18n="account.frequency">Frequency</label>
               <select name="frequency">
-                <option value="Daily">Daily</option>
-                <option value="Weekly">Weekly</option>
-                <option value="Monthly">Monthly</option>
+                <option value="Daily" data-i18n="freq.daily">Daily</option>
+                <option value="Weekly" data-i18n="freq.weekly">Weekly</option>
+                <option value="Monthly" data-i18n="freq.monthly">Monthly</option>
               </select>
             </div>
             <div class="form-group">
-              <label>Opening Date</label>
+              <label data-i18n="account.openDate">Opening Date</label>
               <input type="date" name="opening_date" id="acc-date-input" required>
             </div>
           </div>
           
-          <button type="submit" class="btn btn-ghost btn-block mt-4" id="btn-save-account" style="background:#475569; color:#fff;">Register Account</button>
+          <button type="submit" class="btn btn-ghost btn-block mt-4" id="btn-save-account" style="background:#475569; color:#fff;" data-i18n="account.save">Register Account</button>
         </form>
       </div>
     </main>
@@ -212,19 +279,19 @@
     <main id="screen-portfolios" class="screen hidden">
       <div class="card">
         <div class="card-title" style="justify-content:space-between;">
-          <span>🏛️ Account Portfolios</span>
-          <button class="btn btn-sm btn-ghost" onclick="navigate('add-account')">+ Add</button>
+          <span data-i18n="portfolios.title">🏛️ Account Portfolios</span>
+          <button class="btn btn-sm btn-ghost" onclick="navigate('add-account')" data-i18n="portfolios.add">+ Add</button>
         </div>
         <div class="table-wrap">
           <table id="table-portfolios">
             <thead>
               <tr>
-                <th>Bank / Society</th>
-                <th>Acc No</th>
-                <th>Agent</th>
-                <th>Balance</th>
-                <th>Status</th>
-                <th>Action</th>
+                <th data-i18n="portfolios.bank">Bank / Society</th>
+                <th data-i18n="portfolios.accNo">Acc No</th>
+                <th data-i18n="portfolios.agentCol">Agent</th>
+                <th data-i18n="portfolios.balance">Balance</th>
+                <th data-i18n="portfolios.status">Status</th>
+                <th data-i18n="portfolios.action">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -238,17 +305,17 @@
     <!-- 6. AUDIT TRAIL SCREEN -->
     <main id="screen-audit" class="screen hidden">
       <div class="card">
-        <div class="card-title">🔎 Collections Audit Trail</div>
+        <div class="card-title" data-i18n="audit.title">🔎 Collections Audit Trail</div>
         
         <div class="filter-bar" style="flex-wrap:wrap; gap:10px;">
           <div style="flex: 1; min-width:140px;">
-             <label>Search:</label>
+             <label data-i18n="audit.search">Search:</label>
              <input type="text" id="audit-search" placeholder="Receipt # or notes" onkeyup="renderAuditTrail()">
           </div>
           <div style="flex: 1; min-width:140px;">
-             <label>Filter:</label>
+             <label data-i18n="audit.filter">Filter:</label>
              <select id="audit-filter" onchange="renderAuditTrail()">
-               <option value="">-- All Accounts --</option>
+               <option value="" data-i18n="audit.allAccounts">-- All Accounts --</option>
              </select>
           </div>
         </div>
@@ -257,11 +324,11 @@
           <table id="table-audit">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Bank</th>
-                <th>Net</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th data-i18n="audit.dateCol">Date</th>
+                <th data-i18n="audit.bankCol">Bank</th>
+                <th data-i18n="audit.netCol">Net</th>
+                <th data-i18n="audit.statusCol">Status</th>
+                <th data-i18n="audit.actionsCol">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -269,18 +336,18 @@
             </tbody>
           </table>
         </div>
-        <button class="btn btn-ghost btn-block mt-4" id="btn-load-more" onclick="loadMoreFeeds()">Load More Entries</button>
+        <button class="btn btn-ghost btn-block mt-4" id="btn-load-more" onclick="loadMoreFeeds()" data-i18n="audit.loadMore">Load More Entries</button>
       </div>
     </main>
 
     <!-- 7. EXPORT SCREEN -->
     <main id="screen-export" class="screen hidden">
       <div class="card">
-        <div class="card-title">📊 Export Data</div>
-        <p class="text-dim text-sm mb-4">Generate CSV or Markdown reports locally on your device.</p>
+        <div class="card-title" data-i18n="export.title">📊 Export Data</div>
+        <p class="text-dim text-sm mb-4" data-i18n="export.subtitle">Generate CSV or Markdown reports locally on your device.</p>
         <div class="btn-group">
-          <button class="btn btn-warning btn-block" onclick="exportCSV()">📥 Download CSV</button>
-          <button class="btn btn-success btn-block mt-4" onclick="exportMarkdown()">📄 Download AI MD Dossier</button>
+          <button class="btn btn-warning btn-block" onclick="exportCSV()" data-i18n="export.csv">📥 Download CSV</button>
+          <button class="btn btn-success btn-block mt-4" onclick="exportMarkdown()" data-i18n="export.md">📄 Download AI MD Dossier</button>
         </div>
       </div>
     </main>
@@ -290,32 +357,32 @@
       <div class="card">
         <div class="card-title" style="justify-content:space-between;">
           <span id="detail-bank-name">Bank Name</span>
-          <button class="btn btn-sm btn-ghost" onclick="navigate('portfolios')">Back</button>
+          <button class="btn btn-sm btn-ghost" onclick="navigate('portfolios')" data-i18n="detail.back">Back</button>
         </div>
         <div class="kpi-grid mt-4">
           <div class="kpi-card green">
-             <div class="kpi-label">Current Balance</div>
+             <div class="kpi-label" data-i18n="detail.balance">Current Balance</div>
              <div class="kpi-val" id="detail-balance">₹0</div>
           </div>
           <div class="kpi-card blue">
-             <div class="kpi-label">Status</div>
+             <div class="kpi-label" data-i18n="detail.status">Status</div>
              <div class="kpi-val" id="detail-status" style="font-size:1.1rem;">Active</div>
           </div>
         </div>
         
         <div class="mt-4" style="background:#090d16; padding:12px; border-radius:8px; font-size:0.85rem;">
-          <p><span class="text-dim">Account No:</span> <code id="detail-acc-no"></code></p>
-          <p><span class="text-dim">Holder Name:</span> <span id="detail-holder"></span></p>
-          <p><span class="text-dim">Agent Name:</span> <span id="detail-agent"></span></p>
-          <p><span class="text-dim">Frequency:</span> <span id="detail-freq"></span></p>
-          <p><span class="text-dim">Opened:</span> <span id="detail-opened"></span></p>
+          <p><span class="text-dim" data-i18n="detail.accNo">Account No:</span> <code id="detail-acc-no"></code></p>
+          <p><span class="text-dim" data-i18n="detail.holder">Holder Name:</span> <span id="detail-holder"></span></p>
+          <p><span class="text-dim" data-i18n="detail.agent">Agent Name:</span> <span id="detail-agent"></span></p>
+          <p><span class="text-dim" data-i18n="detail.freq">Frequency:</span> <span id="detail-freq"></span></p>
+          <p><span class="text-dim" data-i18n="detail.opened">Opened:</span> <span id="detail-opened"></span></p>
         </div>
 
-        <h3 class="mt-4 text-primary" style="font-size:1rem; border-bottom:1px solid var(--border); padding-bottom:4px;">Transaction Timeline</h3>
+        <h3 class="mt-4 text-primary" style="font-size:1rem; border-bottom:1px solid var(--border); padding-bottom:4px;" data-i18n="detail.timeline">Transaction Timeline</h3>
         <div class="table-wrap mt-2">
            <table id="table-detail-timeline">
              <thead>
-               <tr><th>Date</th><th>Net</th><th>Notes</th></tr>
+               <tr><th data-i18n="audit.dateCol">Date</th><th data-i18n="audit.netCol">Net</th><th data-i18n="feed.notes">Notes</th></tr>
              </thead>
              <tbody></tbody>
            </table>
@@ -329,23 +396,23 @@
   <nav class="bottom-nav">
     <a class="nav-item active" data-target="home" onclick="navigate('home')">
       <span class="nav-icon">🏠</span>
-      <span>Home</span>
+      <span data-i18n="nav.home">Home</span>
     </a>
     <a class="nav-item" data-target="add-feed" onclick="navigate('add-feed')">
       <span class="nav-icon">📝</span>
-      <span>Add</span>
+      <span data-i18n="nav.add">Add</span>
     </a>
     <a class="nav-item" data-target="cutoff" onclick="navigate('cutoff')">
       <span class="nav-icon">📅</span>
-      <span>Cutoff</span>
+      <span data-i18n="nav.cutoff">Cutoff</span>
     </a>
     <a class="nav-item" data-target="audit" onclick="navigate('audit')">
       <span class="nav-icon">📋</span>
-      <span>Audit</span>
+      <span data-i18n="nav.audit">Audit</span>
     </a>
     <a class="nav-item" data-target="more" onclick="showMoreMenu(this)">
       <span class="nav-icon">⚙️</span>
-      <span>More</span>
+      <span data-i18n="nav.more">More</span>
     </a>
   </nav>
 
@@ -368,15 +435,15 @@
       <form id="form-edit-feed" class="mt-4 text-left">
         <input type="hidden" id="edit-feed-id">
         <div class="form-group">
-          <label>Amount (₹)</label>
+          <label data-i18n="feed.amount">Amount (₹)</label>
           <input type="number" step="any" id="edit-deposit" required>
         </div>
         <div class="form-group">
-          <label>Deductions (₹)</label>
+          <label data-i18n="feed.deductions">Deductions (₹)</label>
           <input type="number" step="any" id="edit-deduction" value="0">
         </div>
         <div class="form-group">
-          <label>Notes / Receipt</label>
+          <label data-i18n="feed.notes">Notes / Receipt</label>
           <input type="text" id="edit-notes">
         </div>
         <div class="modal-actions mt-4">
@@ -413,18 +480,20 @@
   <!-- MORE MENU MODAL -->
   <div id="more-menu-overlay" class="modal-overlay hidden" onclick="if(event.target===this) hideMoreMenu()">
     <div class="modal-box" style="margin-top:auto; margin-bottom:100px;">
-      <h3>More Options</h3>
+      <h3 data-i18n="more.title">More Options</h3>
       <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px;">
-        <button class="btn btn-ghost btn-block" onclick="hideMoreMenu(); navigate('portfolios')">🏛️ Account Portfolios</button>
-        <button class="btn btn-ghost btn-block" onclick="hideMoreMenu(); navigate('add-account')">🏦 Add New Account</button>
-        <button class="btn btn-ghost btn-block" onclick="hideMoreMenu(); navigate('export')">📊 Export Data</button>
-        <button class="btn btn-danger btn-block mt-4" onclick="hideMoreMenu(); logoutUser()">🚪 Logout</button>
+        <button class="btn btn-ghost btn-block" onclick="hideMoreMenu(); navigate('portfolios')" data-i18n="more.portfolios">🏛️ Account Portfolios</button>
+        <button class="btn btn-ghost btn-block" onclick="hideMoreMenu(); navigate('add-account')" data-i18n="more.addAccount">🏦 Add New Account</button>
+        <button class="btn btn-ghost btn-block" onclick="hideMoreMenu(); navigate('export')" data-i18n="more.export">📊 Export Data</button>
+        <button class="btn btn-danger btn-block mt-4" onclick="hideMoreMenu(); logoutUser()" data-i18n="more.logout">🚪 Logout</button>
       </div>
     </div>
   </div>
 
   <!-- App Scripts -->
   <script src="./js/db.js"></script>
+  <script src="./js/i18n.js"></script>
+  <script src="./js/charts.js"></script>
   <script src="./js/export.js"></script>
   <script src="./js/app.js"></script>
 

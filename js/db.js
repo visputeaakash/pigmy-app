@@ -212,6 +212,24 @@ async function updateFeed(id, data) {
   await db.collection('daily_feeds').doc(id).update(data);
 }
 
+async function verifyAllAccountFeeds(accountNumber) {
+  const safeAccNum = accountNumber.replace(/\//g, '-');
+  const snap = await db.collection('daily_feeds')
+    .where('account_number', '==', safeAccNum)
+    .where('passbook_verified', '==', false)
+    .get();
+
+  if (snap.empty) return 0;
+
+  const batch = db.batch();
+  snap.docs.forEach(doc => {
+    batch.update(doc.ref, { passbook_verified: true });
+  });
+
+  await batch.commit();
+  return snap.size;
+}
+
 // ============================================================
 // AGGREGATION / STATS
 // ============================================================

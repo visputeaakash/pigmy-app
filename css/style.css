@@ -650,3 +650,115 @@ tbody tr:last-child td {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ---- v3.0: Language Toggle ---- */
+.btn-lang {
+  background: var(--surface-glass);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.btn-lang:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+/* ---- v3.0: Chart Containers ---- */
+.chart-container {
+  position: relative;
+  width: 100%;
+  height: 220px;
+}
+
+.chart-container.chart-sm {
+  height: 200px;
+}
+
+.charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .charts-row { grid-template-columns: 1fr; }
+  .chart-container { height: 180px; }
+}
+
+/* ---- v3.0: Risk Analysis ---- */
+.risk-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.risk-row:last-child {
+  border-bottom: none;
+}
+
+.risk-icon {
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.risk-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.risk-info strong {
+  font-size: 0.88rem;
+}
+
+/* ---- v3.0: Portfolio Advantages ---- */
+.advantages-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.advantage-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+}
+
+.advantage-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+/* ---- v3.0: Tips Carousel ---- */
+.tips-card {
+  background: linear-gradient(135deg, rgba(56,189,248,0.08), rgba(16,185,129,0.08));
+  border: 1px solid rgba(56,189,248,0.2);
+}
+
+.tip-text {
+  font-size: 0.92rem;
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 48px;
+  transition: opacity 0.3s ease;
+  font-style: italic;
+}
+
+/* ---- v3.0: Text alignment helpers ---- */
+.text-center { text-align: center; }
+.text-left { text-align: left; }
