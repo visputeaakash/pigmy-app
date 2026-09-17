@@ -9,6 +9,7 @@ let allFeeds = [];
 let unsubscribeAccounts = null;
 let unsubscribeFeeds = null;
 let renderLimit = 50;
+let currentDetailAccountId = null;
 
 // DOM Ready
 document.addEventListener("DOMContentLoaded", async () => {
@@ -399,7 +400,8 @@ function renderPortfolios() {
         <td>
           <div class="btn-group" style="flex-wrap:nowrap;">
             <button class="btn btn-sm btn-ghost" onclick="openAccountDetails('${acc.id}')" title="View">👁️</button>
-            ${acc.status === 'Active' ? `<button class="btn btn-sm btn-warning" onclick="openCloseAccount('${acc.id}')" title="Close">Close</button>` : ''}
+            <button class="btn btn-sm btn-ghost" onclick="openEditAccount('${acc.id}')" title="Edit">✏️</button>
+            ${acc.status === 'Active' ? `<button class="btn btn-sm btn-warning" onclick="openCloseAccount('${acc.id}')" title="Close">${t('portfolios.action') || 'Close'}</button>` : ''}
             <button class="btn btn-sm btn-danger" onclick="confirmDeleteAccount('${acc.id}')" title="Delete">Del</button>
           </div>
         </td>
@@ -600,6 +602,31 @@ function setupForms() {
       btn.disabled = false;
     }
   });
+
+  // Edit Account
+  document.getElementById('form-edit-account').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-save-acc-edit');
+    btn.disabled = true;
+    try {
+      const id = document.getElementById('edit-acc-id').value;
+      await updateAccount(id, {
+        holder_name: document.getElementById('edit-acc-holder').value,
+        bank_name: document.getElementById('edit-acc-bank').value,
+        agent_name: document.getElementById('edit-acc-agent').value,
+        agent_phone: document.getElementById('edit-acc-phone').value,
+        frequency: document.getElementById('edit-acc-freq').value,
+        daily_target_amount: document.getElementById('edit-acc-target').value
+      });
+      showToast('✅ Account details updated!', 'success');
+      document.getElementById('modal-edit-account').classList.add('hidden');
+      renderPortfolios();
+    } catch (err) {
+      showToast('Error: ' + err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
 }
 
 // ============================================================
@@ -621,6 +648,19 @@ function openEditFeed(id) {
   document.getElementById('modal-edit-feed').classList.remove('hidden');
 }
 
+function openEditAccount(id) {
+  const acc = allAccounts.find(a => a.id === id);
+  if (!acc) return;
+  document.getElementById('edit-acc-id').value = acc.id;
+  document.getElementById('edit-acc-holder').value = acc.holder_name;
+  document.getElementById('edit-acc-bank').value = acc.bank_name;
+  document.getElementById('edit-acc-agent').value = acc.agent_name;
+  document.getElementById('edit-acc-phone').value = acc.agent_phone || '';
+  document.getElementById('edit-acc-freq').value = acc.frequency || 'Daily';
+  document.getElementById('edit-acc-target').value = acc.daily_target_amount || 100;
+  document.getElementById('modal-edit-account').classList.remove('hidden');
+}
+
 function openCloseAccount(id) {
   document.getElementById('close-acc-id').value = id;
   document.getElementById('close-date').value = new Date().toISOString().slice(0, 10);
@@ -631,20 +671,27 @@ async function openAccountDetails(id) {
   const acc = allAccounts.find(a => a.id === id);
   if (!acc) return;
   
+  currentDetailAccountId = id;
   const accFeeds = allFeeds.filter(f => f.account_number === id).sort((a,b) => new Date(b.feed_date) - new Date(a.feed_date));
   const bal = accFeeds.reduce((sum, f) => sum + (f.net_deposited || 0), 0);
+  const unverifiedCount = accFeeds.filter(f => !f.passbook_verified).length;
   
   document.getElementById('detail-bank-name').innerText = acc.bank_name;
   document.getElementById('detail-balance').innerText = fmtMoney(bal);
   
+  const verifyAllBtn = document.getElementById('btn-verify-all-account');
+  if (verifyAllBtn) {
+    verifyAllBtn.style.display = unverifiedCount > 0 ? 'inline-flex' : 'none';
+    verifyAllBtn.innerText = `✅ Stamp All (${unverifiedCount})`;
+  }
+
   const statusEl = document.getElementById('detail-status');
   statusEl.innerText = acc.status;
-  if (acc.status === 'Matured') statusEl.style.color = 'var(--warning)';
-  else statusEl.style.color = 'var(--accent)';
+  statusEl.style.color = acc.status === 'Matured' ? 'var(--warning)' : 'var(--accent)';
   
   document.getElementById('detail-acc-no').innerText = acc.id;
   document.getElementById('detail-holder').innerText = acc.holder_name;
-  document.getElementById('detail-agent').innerText = acc.agent_name;
+  document.getElementById('detail-agent').innerText = `${acc.agent_name} (${acc.agent_phone || 'N/A'})`;
   document.getElementById('detail-freq').innerText = acc.frequency;
   document.getElementById('detail-opened').innerText = acc.opening_date;
   
@@ -658,6 +705,17 @@ async function openAccountDetails(id) {
   `).join('');
   
   navigate('account-details');
+}
+
+async function handleVerifyAllForCurrentAccount() {
+  if (!currentDetailAccountId) return;
+  try {
+    const stampedCount = await verifyAllAccountFeeds(currentDetailAccountId);
+    showToast(`✅ Successfully stamped ${stampedCount} entries in passbook!`, 'success');
+    openAccountDetails(currentDetailAccountId);
+  } catch (err) {
+    showToast('Error: ' + err.message, 'error');
+  }
 }
 
 async function handleVerifyFeed(id) {

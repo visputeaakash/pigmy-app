@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pigmy-v1';
+const CACHE_NAME = 'pigmy-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,8 @@ const ASSETS = [
   './js/app.js',
   './js/db.js',
   './js/export.js',
+  './js/charts.js',
+  './js/i18n.js',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png'

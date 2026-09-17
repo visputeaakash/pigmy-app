@@ -500,6 +500,10 @@ function setLanguage(langCode) {
 
   // Restart tips in new language
   startTipsRotation();
+  
+  // Re-render dynamic lists if they exist
+  if (typeof renderPortfolios === 'function') renderPortfolios();
+  if (typeof renderAuditTrail === 'function') renderAuditTrail();
 }
 
 function cycleLang() {

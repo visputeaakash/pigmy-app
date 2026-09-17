@@ -103,6 +103,19 @@ async function deleteAccount(accountNumber) {
   await batch.commit();
 }
 
+async function updateAccount(accountNumber, data) {
+  const safeAccNum = accountNumber.replace(/\//g, '-');
+  await db.collection('accounts').doc(safeAccNum).update({
+    holder_name: data.holder_name,
+    bank_name: data.bank_name,
+    agent_name: data.agent_name,
+    agent_phone: data.agent_phone || 'N/A',
+    frequency: data.frequency || 'Daily',
+    daily_target_amount: parseFloat(data.daily_target_amount) || 100.0,
+    status: data.status || 'Active'
+  });
+}
+
 async function closeAccount(accountNumber, withdrawalAmount, maturityDate, notes) {
   const safeAccNum = accountNumber.replace(/\//g, '-');
   const batch = db.batch();
@@ -307,7 +320,6 @@ async function getAccountBalances() {
 function onFeedsChange(callback) {
   return db.collection('daily_feeds')
     .orderBy('feed_date', 'desc')
-    .limit(100)
     .onSnapshot(snap => {
       const feeds = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       callback(feeds);

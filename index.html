@@ -355,9 +355,12 @@
     <!-- 8. ACCOUNT DETAILS SCREEN -->
     <main id="screen-account-details" class="screen hidden">
       <div class="card">
-        <div class="card-title" style="justify-content:space-between;">
+        <div class="card-title" style="justify-content:space-between; flex-wrap:wrap; gap:8px;">
           <span id="detail-bank-name">Bank Name</span>
-          <button class="btn btn-sm btn-ghost" onclick="navigate('portfolios')" data-i18n="detail.back">Back</button>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-sm btn-warning" id="btn-verify-all-account" style="display:none;" onclick="handleVerifyAllForCurrentAccount()">✅ Stamp All Slips</button>
+            <button class="btn btn-sm btn-ghost" onclick="navigate('portfolios')" data-i18n="detail.back">Back</button>
+          </div>
         </div>
         <div class="kpi-grid mt-4">
           <div class="kpi-card green">
@@ -487,6 +490,52 @@
         <button class="btn btn-ghost btn-block" onclick="hideMoreMenu(); navigate('export')" data-i18n="more.export">📊 Export Data</button>
         <button class="btn btn-danger btn-block mt-4" onclick="hideMoreMenu(); logoutUser()" data-i18n="more.logout">🚪 Logout</button>
       </div>
+    </div>
+  </div>
+
+  <!-- MODAL (Edit Account) -->
+  <div id="modal-edit-account" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3>✏️ Edit Account Details</h3>
+      <form id="form-edit-account" class="mt-4 text-left">
+        <input type="hidden" id="edit-acc-id">
+        <div class="form-group">
+          <label>Holder Name</label>
+          <input type="text" id="edit-acc-holder" required>
+        </div>
+        <div class="form-group">
+          <label>Bank / Society Name</label>
+          <input type="text" id="edit-acc-bank" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Agent Name</label>
+            <input type="text" id="edit-acc-agent" required>
+          </div>
+          <div class="form-group">
+            <label>Agent Phone</label>
+            <input type="text" id="edit-acc-phone">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Frequency</label>
+            <select id="edit-acc-freq">
+              <option value="Daily">Daily</option>
+              <option value="Weekly">Weekly</option>
+              <option value="Monthly">Monthly</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Target Amount (₹)</label>
+            <input type="number" step="any" id="edit-acc-target" required>
+          </div>
+        </div>
+        <div class="modal-actions mt-4">
+          <button type="button" class="btn btn-ghost" onclick="document.getElementById('modal-edit-account').classList.add('hidden')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-save-acc-edit">Save Changes</button>
+        </div>
+      </form>
     </div>
   </div>
 
