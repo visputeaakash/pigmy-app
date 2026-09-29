@@ -10,6 +10,7 @@ let unsubscribeAccounts = null;
 let unsubscribeFeeds = null;
 let renderLimit = 50;
 let currentDetailAccountId = null;
+let currentPortfolioFilter = 'all';
 
 // DOM Ready
 document.addEventListener("DOMContentLoaded", async () => {
@@ -115,6 +116,9 @@ const fmtMoney = (num) => '₹' + (num || 0).toLocaleString('en-IN', { minimumFr
 function refreshDashboardFull() {
   updateDashboardFromCache();
   computeAnalytics();
+  computeMaturityAlerts();
+  renderMaturityTracker();
+  renderMaturedAccountsSection();
   computeRiskAnalysis();
   computePortfolioAdvantages();
   if (typeof renderAllCharts === 'function') {
@@ -201,6 +205,252 @@ function computeAnalytics() {
       el.style.color = diffDays > 7 ? 'var(--danger)' : diffDays > 3 ? 'var(--warning)' : 'var(--accent)';
     }
   }
+}
+
+// ============================================================
+// MATURITY PRESETS & CALCULATIONS
+// ============================================================
+
+function applyMaturityPreset(baseInputId, targetInputId, days, fromToday = false) {
+  let baseDate = new Date();
+  if (!fromToday && baseInputId) {
+    const baseVal = document.getElementById(baseInputId)?.value;
+    if (baseVal) baseDate = new Date(baseVal + 'T00:00:00');
+  }
+  const targetEl = document.getElementById(targetInputId);
+  if (!targetEl) return;
+
+  if (days === 0) {
+    targetEl.value = '';
+    return;
+  }
+
+  const d = new Date(baseDate);
+  d.setDate(d.getDate() + days);
+  targetEl.value = d.toISOString().slice(0, 10);
+}
+
+function computeMaturityAlerts() {
+  const container = document.getElementById('maturity-alerts-container');
+  if (!container) return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const activeAccounts = allAccounts.filter(a => a.status === 'Active');
+  
+  // Balances
+  const accBal = {};
+  allFeeds.forEach(f => {
+    accBal[f.account_number] = (accBal[f.account_number] || 0) + (f.net_deposited || 0);
+  });
+
+  const alerts = [];
+
+  activeAccounts.forEach(acc => {
+    if (!acc.maturity_date || acc.maturity_date === 'Open-Ended') return;
+
+    const matDate = new Date(acc.maturity_date + 'T00:00:00');
+    if (isNaN(matDate.getTime())) return;
+
+    const diffDays = Math.ceil((matDate - today) / (1000 * 60 * 60 * 24));
+    const bal = accBal[acc.id] || 0;
+
+    if (diffDays <= 30) {
+      alerts.push({
+        account: acc,
+        balance: bal,
+        diffDays: diffDays,
+        isOverdue: diffDays <= 0
+      });
+    }
+  });
+
+  if (alerts.length === 0) {
+    container.innerHTML = '';
+    container.classList.add('hidden');
+    return;
+  }
+
+  // Sort by urgency: lowest diffDays first
+  alerts.sort((a, b) => a.diffDays - b.diffDays);
+
+  container.innerHTML = `
+    <div style="font-weight:700; font-size:0.85rem; color:var(--warning); margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+      <span>🔔</span> <span>${t('maturity.alertsHeader') || 'Maturity Attention Needed'}</span> (${alerts.length})
+    </div>
+    ` + alerts.map(alert => {
+      const isOverdue = alert.isOverdue;
+      const statusClass = isOverdue ? 'overdue' : '';
+      const badgeIcon = isOverdue ? '⚠️' : '🔔';
+      const badgeText = isOverdue
+        ? (alert.diffDays === 0 ? (t('maturity.dueToday') || 'Maturity Due Today!') : `${Math.abs(alert.diffDays)} ` + (t('maturity.daysOverdue') || 'days overdue for payout'))
+        : `${alert.diffDays} ` + (t('maturity.daysLeft') || 'days remaining');
+
+      return `
+        <div class="maturity-alert-card ${statusClass}">
+          <div class="maturity-alert-header">
+            <span class="maturity-alert-title">
+              <span>${badgeIcon}</span>
+              <span>${alert.account.bank_name}</span>
+            </span>
+            <span class="badge ${isOverdue ? 'badge-danger' : 'badge-warning'} text-xs">${badgeText}</span>
+          </div>
+          <div class="maturity-alert-meta">
+            <div>
+              <span>${alert.account.holder_name}</span> &bull; <code>${alert.account.id}</code><br>
+              <span class="text-xs text-dim">${t('account.maturityDate') || 'Maturity'}: <strong>${alert.account.maturity_date}</strong></span>
+            </div>
+            <div style="text-align:right;">
+              <span class="text-accent fw-bold" style="font-size:1.05rem;">${fmtMoney(alert.balance)}</span><br>
+              <span class="text-xs text-dim">${t('maturity.accumulated') || 'Accumulated'}</span>
+            </div>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:4px;">
+            <button class="btn btn-sm btn-ghost" style="flex:1;" onclick="openAccountDetails('${alert.account.id}')">👁️ Details</button>
+            <button class="btn btn-sm btn-warning" style="flex:1;" onclick="openCloseAccount('${alert.account.id}')">🏆 Settle / Close</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+  container.classList.remove('hidden');
+}
+
+function renderMaturityTracker() {
+  const container = document.getElementById('maturity-tracker-list');
+  const countBadge = document.getElementById('maturity-active-count');
+  if (!container) return;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const accBal = {};
+  allFeeds.forEach(f => {
+    accBal[f.account_number] = (accBal[f.account_number] || 0) + (f.net_deposited || 0);
+  });
+
+  const tracked = allAccounts.filter(a => a.status === 'Active' && a.maturity_date && a.maturity_date !== 'Open-Ended');
+  if (countBadge) countBadge.innerText = `${tracked.length} Tracked`;
+
+  if (tracked.length === 0) {
+    container.innerHTML = `<p class="text-dim text-sm text-center py-2" data-i18n="maturity.noTracked">${t('maturity.noTracked') || 'No accounts with maturity dates configured.'}</p>`;
+    return;
+  }
+
+  container.innerHTML = tracked.map(acc => {
+    const bal = accBal[acc.id] || 0;
+    const target = parseFloat(acc.daily_target_amount) || 100;
+    const matDate = new Date(acc.maturity_date + 'T00:00:00');
+    const openDate = acc.opening_date ? new Date(acc.opening_date + 'T00:00:00') : null;
+
+    let timePct = 50;
+    let daysLeft = 0;
+    if (!isNaN(matDate.getTime())) {
+      daysLeft = Math.ceil((matDate - today) / (1000 * 60 * 60 * 24));
+      if (openDate && !isNaN(openDate.getTime()) && matDate > openDate) {
+        const totalDuration = matDate - openDate;
+        const elapsed = today - openDate;
+        timePct = Math.min(100, Math.max(0, Math.round((elapsed / totalDuration) * 100)));
+      } else {
+        timePct = daysLeft <= 0 ? 100 : Math.min(100, Math.max(0, 100 - daysLeft));
+      }
+    }
+
+    const isDue = daysLeft <= 0;
+    const isUrgent = daysLeft > 0 && daysLeft <= 15;
+    const fillClass = isDue ? 'danger' : isUrgent ? 'warning' : '';
+
+    return `
+      <div class="maturity-tracker-card">
+        <div class="maturity-tracker-header">
+          <div>
+            <strong>${acc.bank_name}</strong>
+            <span class="text-xs text-dim">(${acc.holder_name})</span>
+          </div>
+          <span class="badge ${isDue ? 'badge-danger' : isUrgent ? 'badge-warning' : 'badge-status'} text-xs">
+            ${isDue ? 'Due' : `${daysLeft}d left`}
+          </span>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-top:2px;">
+          <span class="text-dim">${t('maturity.timeElapsed') || 'Time Progress'}: ${timePct}%</span>
+          <span class="text-dim">${acc.opening_date || '—'} &rarr; ${acc.maturity_date}</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill ${fillClass}" style="width: ${timePct}%;"></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem; margin-top:6px;">
+          <div>
+            <span class="text-dim">${t('maturity.saved') || 'Saved'}:</span> <span class="fw-bold text-accent">${fmtMoney(bal)}</span>
+            <span class="text-dim">/ ${fmtMoney(target)}</span>
+          </div>
+          <button class="btn btn-sm btn-ghost" style="padding:2px 8px; font-size:0.75rem;" onclick="openAccountDetails('${acc.id}')">👁️ Details</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderMaturedAccountsSection() {
+  const container = document.getElementById('matured-accounts-list');
+  const countBadge = document.getElementById('matured-badge-count');
+  const kpiPayout = document.getElementById('kpi-matured-payout');
+  const kpiCount = document.getElementById('kpi-matured-count');
+  if (!container) return;
+
+  const matured = allAccounts.filter(a => a.status === 'Matured');
+  if (countBadge) countBadge.innerText = `${matured.length} Matured`;
+  if (kpiCount) kpiCount.innerText = matured.length;
+
+  let totalPayout = 0;
+  const maturedDetails = matured.map(acc => {
+    const accFeeds = allFeeds.filter(f => f.account_number === acc.id);
+    const totalCollected = accFeeds
+      .filter(f => (f.deposit_amount || 0) > 0)
+      .reduce((sum, f) => sum + (f.deposit_amount || 0), 0);
+
+    const withdrawalFeed = accFeeds.find(f => (f.expense_or_deduction || 0) > 0 && f.receipt_or_slip_no === 'MATURITY_WITHDRAWAL');
+    const payout = parseFloat(acc.final_payout) || (withdrawalFeed ? withdrawalFeed.expense_or_deduction : totalCollected) || 0;
+    totalPayout += payout;
+
+    return {
+      account: acc,
+      totalCollected,
+      payout,
+      closureDate: acc.maturity_date || (withdrawalFeed ? withdrawalFeed.feed_date : 'Closed')
+    };
+  });
+
+  if (kpiPayout) kpiPayout.innerText = fmtMoney(totalPayout);
+
+  if (maturedDetails.length === 0) {
+    container.innerHTML = `<p class="text-dim text-sm text-center py-2" data-i18n="matured.empty">${t('matured.empty') || 'No accounts have matured yet.'}</p>`;
+    return;
+  }
+
+  container.innerHTML = maturedDetails.map(item => `
+    <div class="matured-row-item">
+      <div>
+        <div style="font-weight:700; font-size:0.9rem;">
+          🏆 ${item.account.bank_name}
+        </div>
+        <div class="text-xs text-dim">
+          ${item.account.holder_name} &bull; <code>${item.account.id}</code>
+        </div>
+        <div class="text-xs text-dim mt-1">
+          <span>${t('matured.settledDate') || 'Settled'}: <strong>${item.closureDate}</strong></span> &bull; 
+          <span>Agent: ${item.account.agent_name}</span>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <span class="text-accent fw-bold" style="font-size:1.05rem;">${fmtMoney(item.payout)}</span><br>
+        <span class="badge badge-warning text-xs mb-1" style="font-size:0.68rem;">Matured Payout</span><br>
+        <button class="btn btn-sm btn-ghost mt-1" style="padding:2px 8px; font-size:0.75rem;" onclick="openAccountDetails('${item.account.id}')">📜 Passbook</button>
+      </div>
+    </div>
+  `).join('');
 }
 
 // ============================================================
@@ -363,12 +613,51 @@ function updateAccountDropdowns() {
 // RENDERERS
 // ============================================================
 
+function filterPortfolios(filter) {
+  currentPortfolioFilter = filter;
+  document.querySelectorAll('.portfolio-tab').forEach(b => {
+    if (b.getAttribute('data-filter') === filter) {
+      b.classList.add('active');
+      b.classList.remove('btn-ghost');
+      b.classList.add('btn-primary');
+    } else {
+      b.classList.remove('active');
+      b.classList.remove('btn-primary');
+      b.classList.add('btn-ghost');
+    }
+  });
+  renderPortfolios();
+}
+
 // BUG #3 FIX: renderPortfolios now computes from cached data
 function renderPortfolios() {
   const tbody = document.querySelector('#table-portfolios tbody');
+  if (!tbody) return;
+
+  // Update Tab Counters
+  const countAll = allAccounts.length;
+  const countActive = allAccounts.filter(a => a.status === 'Active').length;
+  const countMatured = allAccounts.filter(a => a.status === 'Matured').length;
+  const elAll = document.getElementById('count-tab-all');
+  const elActive = document.getElementById('count-tab-active');
+  const elMatured = document.getElementById('count-tab-matured');
+  if (elAll) elAll.innerText = countAll;
+  if (elActive) elActive.innerText = countActive;
+  if (elMatured) elMatured.innerText = countMatured;
   
   if (allAccounts.length === 0) {
     tbody.innerHTML = `<tr><td colspan="6" class="text-center text-dim">No accounts found.</td></tr>`;
+    return;
+  }
+
+  // Filter accounts
+  let displayAccounts = allAccounts;
+  if (currentPortfolioFilter !== 'all') {
+    displayAccounts = allAccounts.filter(a => a.status === currentPortfolioFilter);
+  }
+
+  if (displayAccounts.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="text-center text-dim">No accounts matching "${currentPortfolioFilter}".</td></tr>`;
     return;
   }
 
@@ -380,11 +669,35 @@ function renderPortfolios() {
     if (!f.passbook_verified) feedsByAcc[f.account_number].unverified++;
   });
 
-  tbody.innerHTML = allAccounts.map(acc => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  tbody.innerHTML = displayAccounts.map(acc => {
     const feeds = feedsByAcc[acc.id] || { total: 0, unverified: 0 };
-    const statusBadge = acc.status === 'Active' 
-      ? `<span class="badge badge-status">${acc.status}</span>`
-      : `<span class="badge badge-danger">${acc.status}</span>`;
+    
+    let maturityStatusHTML = '';
+    if (acc.status === 'Active') {
+      if (acc.maturity_date && acc.maturity_date !== 'Open-Ended') {
+        const matDate = new Date(acc.maturity_date + 'T00:00:00');
+        const diffDays = Math.ceil((matDate - today) / (1000 * 60 * 60 * 24));
+        const badgeClass = diffDays <= 0 ? 'badge-danger' : diffDays <= 15 ? 'badge-warning' : 'badge-status';
+        const label = diffDays <= 0 ? 'Due!' : `${diffDays}d left`;
+        maturityStatusHTML = `
+          <span class="badge ${badgeClass} text-xs">Active</span><br>
+          <span class="text-xs text-dim">🎯 ${acc.maturity_date} (${label})</span>
+        `;
+      } else {
+        maturityStatusHTML = `
+          <span class="badge badge-status text-xs">Active</span><br>
+          <span class="text-xs text-dim">Open-Ended</span>
+        `;
+      }
+    } else {
+      maturityStatusHTML = `
+        <span class="badge badge-warning text-xs">🏆 Matured</span><br>
+        <span class="text-xs text-dim">${acc.maturity_date ? 'On ' + acc.maturity_date : 'Settled'}</span>
+      `;
+    }
       
     const slips = feeds.unverified > 0
       ? `<span class="badge badge-pending text-xs">${feeds.unverified} Pending</span>`
@@ -396,12 +709,12 @@ function renderPortfolios() {
         <td><code>${acc.id}</code></td>
         <td>${acc.agent_name}</td>
         <td class="text-accent fw-bold">${fmtMoney(feeds.total)}<br>${slips}</td>
-        <td>${statusBadge}</td>
+        <td>${maturityStatusHTML}</td>
         <td>
           <div class="btn-group" style="flex-wrap:nowrap;">
             <button class="btn btn-sm btn-ghost" onclick="openAccountDetails('${acc.id}')" title="View">👁️</button>
             <button class="btn btn-sm btn-ghost" onclick="openEditAccount('${acc.id}')" title="Edit">✏️</button>
-            ${acc.status === 'Active' ? `<button class="btn btn-sm btn-warning" onclick="openCloseAccount('${acc.id}')" title="Close">${t('portfolios.action') || 'Close'}</button>` : ''}
+            ${acc.status === 'Active' ? `<button class="btn btn-sm btn-warning" onclick="openCloseAccount('${acc.id}')" title="Settle">🏆</button>` : ''}
             <button class="btn btn-sm btn-danger" onclick="confirmDeleteAccount('${acc.id}')" title="Delete">Del</button>
           </div>
         </td>
@@ -591,7 +904,10 @@ function setupForms() {
     
     try {
       const formData = new FormData(e.target);
-      await addAccount(Object.fromEntries(formData.entries()));
+      const data = Object.fromEntries(formData.entries());
+      data.daily_target_amount = parseFloat(data.daily_target_amount) || 100;
+      data.maturity_date = data.maturity_date || 'Open-Ended';
+      await addAccount(data);
       showToast('✅ Account registered!', 'success');
       e.target.reset();
       document.getElementById('acc-date-input').value = new Date().toISOString().slice(0, 10);
@@ -616,7 +932,9 @@ function setupForms() {
         agent_name: document.getElementById('edit-acc-agent').value,
         agent_phone: document.getElementById('edit-acc-phone').value,
         frequency: document.getElementById('edit-acc-freq').value,
-        daily_target_amount: document.getElementById('edit-acc-target').value
+        daily_target_amount: parseFloat(document.getElementById('edit-acc-target').value) || 100,
+        status: document.getElementById('edit-acc-status').value,
+        maturity_date: document.getElementById('edit-acc-maturity').value || 'Open-Ended'
       });
       showToast('✅ Account details updated!', 'success');
       document.getElementById('modal-edit-account').classList.add('hidden');
@@ -658,6 +976,8 @@ function openEditAccount(id) {
   document.getElementById('edit-acc-phone').value = acc.agent_phone || '';
   document.getElementById('edit-acc-freq').value = acc.frequency || 'Daily';
   document.getElementById('edit-acc-target').value = acc.daily_target_amount || 100;
+  document.getElementById('edit-acc-status').value = acc.status || 'Active';
+  document.getElementById('edit-acc-maturity').value = (acc.maturity_date && acc.maturity_date !== 'Open-Ended') ? acc.maturity_date : '';
   document.getElementById('modal-edit-account').classList.remove('hidden');
 }
 

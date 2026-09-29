@@ -105,15 +105,19 @@ async function deleteAccount(accountNumber) {
 
 async function updateAccount(accountNumber, data) {
   const safeAccNum = accountNumber.replace(/\//g, '-');
-  await db.collection('accounts').doc(safeAccNum).update({
+  const updateObj = {
     holder_name: data.holder_name,
     bank_name: data.bank_name,
     agent_name: data.agent_name,
     agent_phone: data.agent_phone || 'N/A',
     frequency: data.frequency || 'Daily',
     daily_target_amount: parseFloat(data.daily_target_amount) || 100.0,
-    status: data.status || 'Active'
-  });
+    maturity_date: data.maturity_date || 'Open-Ended'
+  };
+  if (data.status) {
+    updateObj.status = data.status;
+  }
+  await db.collection('accounts').doc(safeAccNum).update(updateObj);
 }
 
 async function closeAccount(accountNumber, withdrawalAmount, maturityDate, notes) {
@@ -123,7 +127,9 @@ async function closeAccount(accountNumber, withdrawalAmount, maturityDate, notes
   // 1. Update the account status
   batch.update(db.collection('accounts').doc(safeAccNum), {
     status: 'Matured',
-    maturity_date: maturityDate
+    maturity_date: maturityDate,
+    final_payout: parseFloat(withdrawalAmount) || 0,
+    settled_at: serverTimestamp()
   });
   
   // 2. Add a final withdrawal feed entry
@@ -131,14 +137,15 @@ async function closeAccount(accountNumber, withdrawalAmount, maturityDate, notes
   batch.set(feedRef, {
     account_number: safeAccNum,
     feed_date: maturityDate,
-    day_of_week: new Date(maturityDate).toLocaleDateString('en-US', { weekday: 'long' }),
+    day_of_week: new Date(maturityDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long' }),
     is_sunday: false,
     deposit_amount: 0,
     expense_or_deduction: withdrawalAmount,
     net_deposited: -Math.abs(withdrawalAmount),
     receipt_or_slip_no: 'MATURITY_WITHDRAWAL',
     passbook_verified: true,
-    notes: notes || 'Account Closed/Matured'
+    notes: notes || 'Account Closed/Matured',
+    created_at: serverTimestamp()
   });
   
   await batch.commit();

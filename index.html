@@ -60,6 +60,11 @@
 
     <!-- 1. DASHBOARD SCREEN -->
     <main id="screen-home" class="screen hidden">
+      <!-- UPCOMING MATURITY NOTIFICATIONS BANNER -->
+      <div id="maturity-alerts-container" class="mb-3 hidden">
+        <!-- Dynamically injected: urgent / upcoming maturity notifications -->
+      </div>
+
       <!-- Primary KPIs -->
       <div class="kpi-grid">
         <div class="kpi-card green">
@@ -101,6 +106,18 @@
         </div>
       </div>
 
+      <!-- Maturity Tracker Section -->
+      <div class="card mt-4">
+        <div class="card-title" style="justify-content:space-between;">
+          <span data-i18n="maturity.trackerTitle">⏳ Account Maturity Tracker</span>
+          <span class="badge badge-status text-xs" id="maturity-active-count">0 Tracked</span>
+        </div>
+        <p class="text-xs text-dim mb-3" data-i18n="maturity.trackerSub">Timeline countdown & target achievement for active accounts.</p>
+        <div id="maturity-tracker-list">
+          <p class="text-dim text-sm text-center py-2" data-i18n="maturity.noTracked">No accounts with maturity dates configured.</p>
+        </div>
+      </div>
+
       <!-- Charts -->
       <div class="card mt-4">
         <div class="card-title" data-i18n="chart.monthly">📈 Monthly Collection Trend</div>
@@ -115,6 +132,28 @@
         <div class="card">
           <div class="card-title" data-i18n="chart.daily">📉 Last 30 Days Activity</div>
           <div class="chart-container chart-sm"><canvas id="chart-daily"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Matured Accounts Showcase -->
+      <div class="card mt-4">
+        <div class="card-title" style="justify-content:space-between;">
+          <span data-i18n="matured.sectionTitle">🏆 Matured Accounts & Settlements</span>
+          <span class="badge badge-warning text-xs" id="matured-badge-count">0 Matured</span>
+        </div>
+        <p class="text-xs text-dim mb-3" data-i18n="matured.sectionSub">Archive of closed accounts and realized payouts.</p>
+        <div class="kpi-grid" style="grid-template-columns: 1fr 1fr;">
+          <div class="kpi-card" style="border-left:3px solid var(--accent); padding:10px 12px;">
+            <div class="kpi-label" data-i18n="matured.totalPayout">Total Settled Corpus</div>
+            <div class="kpi-val text-accent" id="kpi-matured-payout" style="font-size:1.15rem;">₹0.00</div>
+          </div>
+          <div class="kpi-card" style="border-left:3px solid var(--warning); padding:10px 12px;">
+            <div class="kpi-label" data-i18n="matured.closedCount">Accounts Settled</div>
+            <div class="kpi-val text-warning" id="kpi-matured-count" style="font-size:1.15rem;">0</div>
+          </div>
+        </div>
+        <div id="matured-accounts-list" class="mt-3">
+          <p class="text-dim text-sm text-center py-2" data-i18n="matured.empty">No accounts have matured yet.</p>
         </div>
       </div>
 
@@ -269,6 +308,27 @@
               <input type="date" name="opening_date" id="acc-date-input" required>
             </div>
           </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label data-i18n="account.targetAmount">Target Amount (₹)</label>
+              <input type="number" step="any" name="daily_target_amount" placeholder="e.g. 36500" value="36500" required>
+            </div>
+            <div class="form-group">
+              <label data-i18n="account.maturityDate">Maturity Date</label>
+              <input type="date" name="maturity_date" id="acc-maturity-input">
+            </div>
+          </div>
+
+          <div class="form-group mt-1">
+            <label class="text-xs text-dim" data-i18n="account.quickDuration">Quick Duration Presets:</label>
+            <div class="btn-group" style="gap:6px; flex-wrap:wrap; margin-top:4px;">
+              <button type="button" class="btn btn-sm btn-ghost" onclick="applyMaturityPreset('acc-date-input', 'acc-maturity-input', 100)" data-i18n="preset.100d">100 Days</button>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="applyMaturityPreset('acc-date-input', 'acc-maturity-input', 180)" data-i18n="preset.6m">6 Months</button>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="applyMaturityPreset('acc-date-input', 'acc-maturity-input', 365)" data-i18n="preset.1y">1 Year (365d)</button>
+              <button type="button" class="btn btn-sm btn-ghost" onclick="applyMaturityPreset('acc-date-input', 'acc-maturity-input', 0)" data-i18n="preset.open">Open-Ended</button>
+            </div>
+          </div>
           
           <button type="submit" class="btn btn-ghost btn-block mt-4" id="btn-save-account" style="background:#475569; color:#fff;" data-i18n="account.save">Register Account</button>
         </form>
@@ -282,6 +342,13 @@
           <span data-i18n="portfolios.title">🏛️ Account Portfolios</span>
           <button class="btn btn-sm btn-ghost" onclick="navigate('add-account')" data-i18n="portfolios.add">+ Add</button>
         </div>
+        
+        <div class="portfolio-tabs mt-3" style="display:flex; gap:8px; margin-bottom:12px;">
+          <button type="button" class="btn btn-sm btn-primary portfolio-tab active" data-filter="all" onclick="filterPortfolios('all')">All (<span id="count-tab-all">0</span>)</button>
+          <button type="button" class="btn btn-sm btn-ghost portfolio-tab" data-filter="Active" onclick="filterPortfolios('Active')">Active (<span id="count-tab-active">0</span>)</button>
+          <button type="button" class="btn btn-sm btn-ghost portfolio-tab" data-filter="Matured" onclick="filterPortfolios('Matured')">Matured (<span id="count-tab-matured">0</span>)</button>
+        </div>
+
         <div class="table-wrap">
           <table id="table-portfolios">
             <thead>
@@ -290,7 +357,7 @@
                 <th data-i18n="portfolios.accNo">Acc No</th>
                 <th data-i18n="portfolios.agentCol">Agent</th>
                 <th data-i18n="portfolios.balance">Balance</th>
-                <th data-i18n="portfolios.status">Status</th>
+                <th data-i18n="portfolios.status">Status / Maturity</th>
                 <th data-i18n="portfolios.action">Action</th>
               </tr>
             </thead>
@@ -527,8 +594,30 @@
             </select>
           </div>
           <div class="form-group">
+            <label>Account Status</label>
+            <select id="edit-acc-status">
+              <option value="Active">Active</option>
+              <option value="Matured">Matured</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
             <label>Target Amount (₹)</label>
             <input type="number" step="any" id="edit-acc-target" required>
+          </div>
+          <div class="form-group">
+            <label>Maturity Date</label>
+            <input type="date" id="edit-acc-maturity">
+          </div>
+        </div>
+        <div class="form-group mt-1">
+          <label class="text-xs text-dim">Duration Presets:</label>
+          <div class="btn-group" style="gap:4px; flex-wrap:wrap; margin-top:2px;">
+            <button type="button" class="btn btn-sm btn-ghost" onclick="applyMaturityPreset('', 'edit-acc-maturity', 100, true)">+100 Days</button>
+            <button type="button" class="btn btn-sm btn-ghost" onclick="applyMaturityPreset('', 'edit-acc-maturity', 180, true)">+6 Months</button>
+            <button type="button" class="btn btn-sm btn-ghost" onclick="applyMaturityPreset('', 'edit-acc-maturity', 365, true)">+1 Year</button>
+            <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('edit-acc-maturity').value=''">Clear</button>
           </div>
         </div>
         <div class="modal-actions mt-4">

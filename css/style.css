@@ -762,3 +762,108 @@ tbody tr:last-child td {
 /* ---- v3.0: Text alignment helpers ---- */
 .text-center { text-align: center; }
 .text-left { text-align: left; }
+
+/* ---- v3.1: Maturity Alerts, Tracker & Settlements ---- */
+.maturity-alert-card {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.12));
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-left: 4px solid var(--warning);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: pulseGlow 3s infinite alternate;
+}
+
+.maturity-alert-card.overdue {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05));
+  border-color: var(--danger);
+  border-left-color: var(--danger);
+}
+
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 0 rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 12px rgba(245, 158, 11, 0.25); }
+}
+
+.maturity-alert-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.maturity-alert-title {
+  font-weight: 700;
+  font-size: 0.92rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.maturity-alert-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+
+.maturity-tracker-card {
+  background: var(--bg);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.maturity-tracker-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(51, 65, 85, 0.5);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.progress-fill.warning {
+  background: linear-gradient(90deg, var(--warning), #f97316);
+}
+
+.progress-fill.danger {
+  background: linear-gradient(90deg, #f97316, var(--danger));
+}
+
+.matured-row-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+  gap: 10px;
+}
+
+.portfolio-tab.active {
+  background: var(--primary) !important;
+  color: #fff !important;
+}
+
